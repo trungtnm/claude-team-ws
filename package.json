@@ -9,7 +9,10 @@
     "db:migrate": "pnpm --filter @ctw/server db:migrate",
     "docker:up": "cd docker && docker compose up -d",
     "docker:down": "cd docker && docker compose down",
-    "docker:logs": "cd docker && docker compose logs -f"
+    "docker:logs": "cd docker && docker compose logs -f",
+    "test": "pnpm --filter @ctw/server test",
+    "test:integration": "pnpm --filter @ctw/server test:integration",
+    "test:e2e": "pnpm --filter @ctw/client test:e2e"
   },
   "devDependencies": {
     "concurrently": "^9.0.0",

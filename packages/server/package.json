@@ -9,7 +9,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",
@@ -34,7 +35,9 @@
     "@types/express-serve-static-core": "^5.1.1",
     "@types/jsonwebtoken": "^9.0.0",
     "@types/morgan": "^1.9.0",
+    "@types/supertest": "^7.2.0",
     "drizzle-kit": "^0.30.0",
+    "supertest": "^7.2.2",
     "tsup": "^8.3.0",
     "tsx": "^4.19.0",
     "vitest": "^2.1.0"
