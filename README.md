@@ -4,8 +4,6 @@
 
 Xây dựng workspace chung cho team dev trên Mac Mini host. PM/Dev capture ý tưởng, triage thành Epics, trigger Agent sessions, review qua PR workflow.
 
-**Project hoàn toàn mới** — repo riêng, không phụ thuộc claude-code-utils. Tích hợp với br, bv, CASS, CM, Agent Mail như external CLI/services (tham khảo ccu docs cho command patterns, không import code).
-
 ---
 
 ## Architecture Decisions (Finalized)
@@ -338,3 +336,107 @@ PM clicks "Start" on Epic
 - Cloudflare Tunnel setup for remote team access
 - PM2 config for workspace app
 - Dashboard polish, role-based views
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- macOS 14+ (Sonoma), Apple Silicon recommended
+- Node.js 20+, pnpm 9+
+- CLI tools: `claude`, `br`, `bv`, `cass`, `gh`, `git`
+- Docker Desktop (for Agent Mail + CM, optional in dev)
+
+### Setup
+
+```bash
+# Clone and install
+git clone git@github.com:trungtnm/claude-team-ws.git
+cd claude-team-ws
+pnpm install
+
+# Configure environment
+cp .env.example .env
+# Edit .env: set JWT_SECRET, ADMIN_EMAIL, ADMIN_API_KEY
+
+# Start development
+pnpm dev    # Express :3000 + Vite :5173
+```
+
+### Verify
+
+```bash
+# Health check
+curl http://localhost:3000/api/health
+
+# Run tests
+pnpm test              # 110+ unit tests
+pnpm test:integration  # Integration tests (real SQLite)
+pnpm test:e2e          # E2E tests (Playwright, auto-starts servers)
+```
+
+---
+
+## Development Guide
+
+### Testing Strategy
+
+| Layer | Tool | Command | Scope |
+|-------|------|---------|-------|
+| Unit | Vitest | `pnpm test` | Services, middleware, utilities |
+| Integration | Vitest + supertest | `pnpm test:integration` | Routes with real SQLite DB |
+| E2E | Playwright | `pnpm test:e2e` | Full browser flows |
+
+**Integration tests** use in-memory SQLite via `createTestDb()` from `packages/server/src/db/test-db.ts`. Each test file gets a fresh schema; `cleanAllTables()` resets data between tests.
+
+**E2E tests** auto-start the dev server via Playwright's `webServer` config. Write specs in `packages/client/e2e/`.
+
+### Adding a New Feature
+
+1. Create a bead: `br create --actor assistant "Feature title" -t task -p 1`
+2. Backend: add route in `packages/server/src/routes/`, service in `services/`
+3. Write integration test: `*.integration.test.ts` using `createTestDb()`
+4. Frontend: add page/component, TanStack Query hook, socket listener
+5. Write E2E test in `packages/client/e2e/`
+6. Emit Socket.IO events from route mutations
+7. Close bead: `br close <id> --reason "Done"` + `br sync --flush-only`
+
+### Adding a New API Route
+
+```typescript
+// packages/server/src/routes/my-resource.ts
+import { Router } from 'express'
+import { z } from 'zod'
+import { authenticate } from '../middleware/auth.js'
+import { requireRole } from '../middleware/rbac.js'
+import { db } from '../db/index.js'
+import { emitToProject } from '../services/socket-manager.js'
+
+const router = Router()
+router.use(authenticate)
+
+// Validate with zod, emit socket events on mutations
+router.post('/', requireRole('pm', 'techlead'), async (req, res) => {
+  const parsed = createSchema.safeParse(req.body)
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Dữ liệu không hợp lệ', details: parsed.error.issues })
+  }
+  // ... insert into DB ...
+  emitToProject(projectId, 'resource:created', result)
+  res.status(201).json({ resource: result })
+})
+
+export default router
+```
+
+### Project Tracking
+
+This project uses [Beads Rust](https://github.com/beads-rs/beads) (`br`) for issue tracking with prefix `ctw`:
+
+```bash
+br ready --json          # What's unblocked and actionable
+br list --json           # All open issues
+bv --robot-triage        # AI-powered triage with dependency analysis
+bv --robot-plan          # Parallel execution tracks
+```
