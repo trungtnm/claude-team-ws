@@ -27,3 +27,11 @@ data/
 .beads/beads.db
 .beads/beads.db-wal
 .beads/beads.db-shm
+
+# bv (beads viewer) local config and caches
+.bv/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
