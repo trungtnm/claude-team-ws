@@ -1,0 +1,29 @@
+# Ephemeral session state
+.ccu/SESSION.md
+.ccu/CHECKPOINT.md
+.ccu/CAPTURES.md
+.ccu/HANDOFF.md
+
+# OS
+.DS_Store
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment
+.env
+.env.local
+
+# SQLite databases (not tracked)
+*.db
+*.db-wal
+*.db-shm
+data/
+
+# Beads DB (tracked via issues.jsonl only)
+.beads/beads.db
+.beads/beads.db-wal
+.beads/beads.db-shm

@@ -1,0 +1,22 @@
+{
+  "name": "claude-team-ws",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"pnpm --filter @ctw/server dev\" \"pnpm --filter @ctw/client dev\"",
+    "build": "pnpm --filter @ctw/server build && pnpm --filter @ctw/client build",
+    "start:server": "pnpm --filter @ctw/server start",
+    "db:generate": "pnpm --filter @ctw/server db:generate",
+    "db:migrate": "pnpm --filter @ctw/server db:migrate",
+    "docker:up": "cd docker && docker compose up -d",
+    "docker:down": "cd docker && docker compose down",
+    "docker:logs": "cd docker && docker compose logs -f"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}
