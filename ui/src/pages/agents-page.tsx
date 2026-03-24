@@ -2,26 +2,25 @@ import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Bot, Plus, Search, Maximize2, X,
-  AlertTriangle, Loader2, LinkIcon, ArrowRight,
-  GitPullRequest,
+  Loader2,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
-// Separator available if needed
 import { AgentStreamView } from '@/components/agents/agent-stream-view'
 import { SessionStatsBar } from '@/components/agents/session-stats-bar'
-import { AskQuestionDialog } from '@/components/agents/ask-question-dialog'
+import { SessionInput } from '@/components/agents/session-input'
+import { PermissionModeBar } from '@/components/agents/permission-mode-bar'
+import { NewSessionDialog } from '@/components/agents/new-session-dialog'
 import { sessions, getSessionsByStatus, type AgentSession } from '@/data/sessions'
-import { getUserById } from '@/data/users'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
-const statusConfig: Record<string, { dot: string; label: string; badge: 'success' | 'warning' | 'error' | 'default' }> = {
+const statusConfig: Record<string, { dot: string; label: string; badge: 'success' | 'warning' | 'error' | 'default' | 'info' }> = {
   running: { dot: 'bg-green-400', label: 'Running', badge: 'success' },
+  idle: { dot: 'bg-blue-400', label: 'Idle', badge: 'info' },
   waiting_input: { dot: 'bg-amber-400', label: 'Needs Input', badge: 'warning' },
-  queued: { dot: 'bg-gray-400', label: 'Queued', badge: 'default' },
   completed: { dot: 'bg-green-400', label: 'Completed', badge: 'success' },
   failed: { dot: 'bg-red-400', label: 'Failed', badge: 'error' },
   cancelled: { dot: 'bg-gray-400', label: 'Cancelled', badge: 'default' },
@@ -45,83 +44,77 @@ function formatDuration(seconds: number): string {
   return `${Math.floor(m / 60)}h ${m % 60}m`
 }
 
-type FilterTab = 'active' | 'queued' | 'history'
+type FilterTab = 'active' | 'history'
 
 export default function AgentsPage() {
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
   const [activeTab, setActiveTab] = useState<FilterTab>('active')
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
-  const [questionOpen, setQuestionOpen] = useState(false)
+  const [newSessionOpen, setNewSessionOpen] = useState(false)
 
   const running = getSessionsByStatus('running')
   const waiting = getSessionsByStatus('waiting_input')
-  const queued = getSessionsByStatus('queued')
+  const idle = getSessionsByStatus('idle')
   const completed = getSessionsByStatus('completed')
   const failed = getSessionsByStatus('failed')
 
   // Auto-select first active session if none selected
   useEffect(() => {
     if (!selectedSessionId) {
-      const firstActive = [...waiting, ...running][0]
+      const firstActive = [...waiting, ...running, ...idle][0]
       if (firstActive) setSelectedSessionId(firstActive.id)
     }
-  }, [selectedSessionId, waiting, running])
+  }, [selectedSessionId, waiting, running, idle])
 
   const filteredSessions = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
     const match = (s: AgentSession) =>
       !q ||
-      s.epicTitle.toLowerCase().includes(q) ||
-      s.agentName.toLowerCase().includes(q) ||
-      (s.beadTitle?.toLowerCase().includes(q) ?? false)
+      s.name.toLowerCase().includes(q) ||
+      s.prompt.toLowerCase().includes(q)
 
     switch (activeTab) {
       case 'active':
-        return [...running, ...waiting].filter(match)
-      case 'queued':
-        return queued.filter(match)
+        return [...running, ...waiting, ...idle].filter(match)
       case 'history':
         return [...completed, ...failed].filter(match)
     }
-  }, [searchQuery, activeTab, running, waiting, queued, completed, failed])
+  }, [searchQuery, activeTab, running, waiting, idle, completed, failed])
 
   const selectedSession = sessions.find((s) => s.id === selectedSessionId)
 
   const tabs: { id: FilterTab; label: string; count: number; dot?: string }[] = [
-    { id: 'active', label: 'Active', count: running.length + waiting.length, dot: 'bg-green-400' },
-    { id: 'queued', label: 'Queued', count: queued.length },
+    { id: 'active', label: 'Active', count: running.length + waiting.length + idle.length, dot: 'bg-green-400' },
     { id: 'history', label: 'History', count: completed.length + failed.length },
   ]
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      {/* ── Top bar ── */}
+    <div className="flex flex-1 flex-col min-h-0">
+      {/* Top bar */}
       <div className="flex items-center justify-between border-b border-edge px-4 py-3">
         <div className="flex items-center gap-3">
           <h1 className="text-lg font-semibold text-ink">Agents</h1>
-          {/* Live counters */}
           <div className="flex items-center gap-3 text-xs text-ink-muted">
             <span className="flex items-center gap-1.5">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-green-400" />
               </span>
-              {running.length + waiting.length} active
+              {running.length + waiting.length + idle.length} active
             </span>
-            <span>{queued.length} queued</span>
             <span className="text-ink-disabled">· max 3 concurrent</span>
           </div>
         </div>
-        <Button size="sm" onClick={() => toast.info('Session creation not available in demo')}>
+        <Button size="sm" onClick={() => setNewSessionOpen(true)}>
           <Plus className="h-3.5 w-3.5" />
           New Session
         </Button>
       </div>
 
-      {/* ── Split panel ── */}
+      {/* Split panel */}
       <div className="flex flex-1 min-h-0">
-        {/* ── Left: Session list ── */}
+        {/* Left: Session list */}
         <div className="flex w-80 shrink-0 flex-col border-r border-edge">
           {/* Tabs */}
           <div className="flex items-center border-b border-edge">
@@ -185,7 +178,7 @@ export default function AgentsPage() {
           </ScrollArea>
         </div>
 
-        {/* ── Right: Session detail / stream preview ── */}
+        {/* Right: Session detail / stream preview */}
         <div className="flex flex-1 flex-col min-w-0">
           {selectedSession ? (
             <>
@@ -193,12 +186,12 @@ export default function AgentsPage() {
               <div className="border-b border-edge px-4 py-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <span className="text-sm font-medium text-ink">{selectedSession.agentName || 'Unassigned'}</span>
+                    <span className="text-sm font-medium text-ink">{selectedSession.name}</span>
                     <Badge variant="outline" className="text-[10px]">{selectedSession.model}</Badge>
                     <Badge variant={statusConfig[selectedSession.status]?.badge ?? 'default'}>
                       {statusConfig[selectedSession.status]?.label}
                     </Badge>
-                    {(selectedSession.status === 'running' || selectedSession.status === 'waiting_input') && (
+                    {(selectedSession.status === 'running' || selectedSession.status === 'waiting_input' || selectedSession.status === 'idle') && (
                       <span className="text-xs text-ink-muted">
                         <LiveDuration startedAt={selectedSession.startedAt} />
                       </span>
@@ -222,97 +215,27 @@ export default function AgentsPage() {
                   </div>
                 </div>
 
-                {/* Live metrics bar for active sessions */}
-                {(selectedSession.status === 'running' || selectedSession.status === 'waiting_input') && (
-                  <div className="mt-2 flex items-center gap-4">
-                    {/* Context window gauge */}
-                    {selectedSession.contextWindowPercent !== undefined && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-ink-muted">Context</span>
-                        <div className="h-1.5 w-20 rounded-full bg-surface-elevated">
-                          <div
-                            className={cn(
-                              'h-full rounded-full transition-all',
-                              selectedSession.contextWindowPercent > 80 ? 'bg-red-400' : selectedSession.contextWindowPercent > 60 ? 'bg-amber-400' : 'bg-accent/60',
-                            )}
-                            style={{ width: `${selectedSession.contextWindowPercent}%` }}
-                          />
-                        </div>
-                        <span className="text-[10px] text-ink-disabled">{selectedSession.contextWindowPercent}%</span>
-                      </div>
-                    )}
-                    {selectedSession.tokensUsed !== undefined && (
-                      <span className="text-[10px] text-ink-muted">
-                        {(selectedSession.tokensUsed / 1000).toFixed(1)}k tokens
-                      </span>
-                    )}
-                    {selectedSession.costUsd !== undefined && (
-                      <span className="text-[10px] text-accent font-medium">
-                        ${selectedSession.costUsd.toFixed(2)}
-                      </span>
-                    )}
-                    <span className="text-[10px] text-ink-disabled">
-                      {selectedSession.turns} turns · {selectedSession.filesModified} files
-                    </span>
+                {/* Permission mode bar */}
+                {(selectedSession.status === 'running' || selectedSession.status === 'waiting_input' || selectedSession.status === 'idle') && (
+                  <div className="mt-2">
+                    <PermissionModeBar sessionId={selectedSession.id} currentMode={selectedSession.permissionMode} />
                   </div>
                 )}
-
-                {/* Context line */}
-                <div className="mt-1.5 flex items-center gap-4 text-xs text-ink-muted">
-                  <span className="flex items-center gap-1">
-                    <LinkIcon className="h-3 w-3" />
-                    {selectedSession.epicTitle}
-                  </span>
-                  {selectedSession.beadTitle && (
-                    <span className="flex items-center gap-1">
-                      <ArrowRight className="h-2.5 w-2.5" />
-                      {selectedSession.beadTitle}
-                    </span>
-                  )}
-                  {selectedSession.prNumber && (
-                    <span className="flex items-center gap-1 text-accent">
-                      <GitPullRequest className="h-3 w-3" />
-                      PR #{selectedSession.prNumber}
-                    </span>
-                  )}
-                </div>
               </div>
 
-              {/* Waiting input banner */}
-              {selectedSession.status === 'waiting_input' && selectedSession.question && (
-                <div className="border-b border-amber-500/20 bg-amber-500/5 px-4 py-3">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-amber-400">Agent is waiting for your input</p>
-                      <p className="mt-1 text-sm text-ink-secondary">{selectedSession.question.text}</p>
-                      {selectedSession.question.context && (
-                        <p className="mt-1 text-[11px] text-ink-muted font-mono">{selectedSession.question.context}</p>
-                      )}
-                    </div>
-                    <Button size="sm" onClick={() => setQuestionOpen(true)}>
-                      Answer
-                    </Button>
-                  </div>
-                </div>
-              )}
-
               {/* Stream view */}
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 min-h-0">
                 <AgentStreamView sessionId={selectedSession.id} />
               </div>
 
-              {/* Stats bar */}
-              <SessionStatsBar session={selectedSession} />
-
-              {/* Question dialog */}
-              {selectedSession.question && selectedSession.status === 'waiting_input' && (
-                <AskQuestionDialog
+              {/* Stats bar + input */}
+              <div className="shrink-0">
+                <SessionStatsBar session={selectedSession} />
+                <SessionInput
                   session={selectedSession}
-                  open={questionOpen}
-                  onOpenChange={setQuestionOpen}
+                  onCancel={() => toast.info('Cancel not available in demo')}
                 />
-              )}
+              </div>
             </>
           ) : (
             <div className="flex flex-1 items-center justify-center">
@@ -325,6 +248,13 @@ export default function AgentsPage() {
           )}
         </div>
       </div>
+
+      {/* New session dialog */}
+      <NewSessionDialog
+        open={newSessionOpen}
+        onOpenChange={setNewSessionOpen}
+        onCreated={(id) => setSelectedSessionId(id)}
+      />
     </div>
   )
 }
@@ -340,8 +270,7 @@ function SessionListItem({
   onClick: () => void
 }) {
   const config = statusConfig[session.status] ?? statusConfig.cancelled
-  const isActive = session.status === 'running' || session.status === 'waiting_input'
-  const requester = getUserById(session.requestedById)
+  const isActive = session.status === 'running' || session.status === 'waiting_input' || session.status === 'idle'
 
   return (
     <button
@@ -353,9 +282,10 @@ function SessionListItem({
           ? 'bg-surface-elevated border border-accent/30'
           : 'hover:bg-surface-elevated/50 border border-transparent',
         session.status === 'waiting_input' && !selected && 'bg-amber-500/5 border-amber-500/15',
+        session.status === 'idle' && !selected && 'bg-blue-500/5 border-blue-500/15',
       )}
     >
-      {/* Top row: agent name + status */}
+      {/* Top row: session name + status */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           <span className={cn(
@@ -364,7 +294,7 @@ function SessionListItem({
             isActive && 'animate-pulse',
           )} />
           <span className="text-sm font-medium text-ink truncate">
-            {session.agentName || `Queue #${session.queuePosition}`}
+            {session.name}
           </span>
         </div>
         <Badge variant={config.badge} className="text-[9px] shrink-0 ml-2">
@@ -372,11 +302,8 @@ function SessionListItem({
         </Badge>
       </div>
 
-      {/* Epic + bead */}
-      <p className="mt-1 text-xs text-ink-secondary truncate">{session.epicTitle}</p>
-      {session.beadTitle && (
-        <p className="text-[11px] text-ink-muted truncate">→ {session.beadTitle}</p>
-      )}
+      {/* Prompt preview */}
+      <p className="mt-1 text-xs text-ink-secondary truncate">{session.prompt}</p>
 
       {/* Bottom row: stats */}
       <div className="mt-1.5 flex items-center gap-3 text-[10px] text-ink-disabled">
@@ -392,38 +319,27 @@ function SessionListItem({
               <span className="text-accent">${session.costUsd.toFixed(2)}</span>
             )}
           </>
-        ) : session.status === 'queued' ? (
-          <>
-            <span>#{session.queuePosition} in queue</span>
-            <span>{requester?.name}</span>
-          </>
         ) : (
           <>
             <span>{formatDuration(session.duration)}</span>
             <span>{session.turns} turns</span>
-            {session.prNumber && (
-              <span className="flex items-center gap-0.5 text-accent">
-                <GitPullRequest className="h-2.5 w-2.5" />
-                #{session.prNumber}
-              </span>
-            )}
           </>
         )}
       </div>
 
       {/* Context window gauge for active sessions */}
-      {isActive && session.contextWindowPercent !== undefined && (
+      {isActive && session.contextWindow && (
         <div className="mt-1.5">
           <div className="h-1 rounded-full bg-surface-elevated">
             <div
               className={cn(
                 'h-full rounded-full transition-all',
-                session.contextWindowPercent > 80 ? 'bg-red-400' : session.contextWindowPercent > 60 ? 'bg-amber-400' : 'bg-accent/60',
+                session.contextWindow.usedPercentage > 80 ? 'bg-red-400' : session.contextWindow.usedPercentage > 60 ? 'bg-amber-400' : 'bg-accent/60',
               )}
-              style={{ width: `${session.contextWindowPercent}%` }}
+              style={{ width: `${session.contextWindow.usedPercentage}%` }}
             />
           </div>
-          <p className="mt-0.5 text-[9px] text-ink-disabled">{session.contextWindowPercent}% context</p>
+          <p className="mt-0.5 text-[9px] text-ink-disabled">{session.contextWindow.usedPercentage}% context</p>
         </div>
       )}
 

@@ -1,26 +1,26 @@
-import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, X, LinkIcon, ArrowRight } from 'lucide-react'
+import { ArrowLeft, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { AgentStreamView } from '@/components/agents/agent-stream-view'
 import { SessionStatsBar } from '@/components/agents/session-stats-bar'
-import { AskQuestionDialog } from '@/components/agents/ask-question-dialog'
+import { SessionInput } from '@/components/agents/session-input'
+import { PermissionModeBar } from '@/components/agents/permission-mode-bar'
 import { sessions } from '@/data/sessions'
 import { toast } from 'sonner'
 
-const statusVariantMap: Record<string, 'success' | 'warning' | 'default' | 'error'> = {
+const statusVariantMap: Record<string, 'success' | 'warning' | 'default' | 'error' | 'info'> = {
   running: 'success',
+  idle: 'info',
   waiting_input: 'warning',
-  queued: 'default',
   completed: 'success',
   failed: 'error',
 }
 
 const statusLabelMap: Record<string, string> = {
   running: 'Running',
+  idle: 'Idle',
   waiting_input: 'Waiting Input',
-  queued: 'Queued',
   completed: 'Completed',
   failed: 'Failed',
 }
@@ -28,7 +28,6 @@ const statusLabelMap: Record<string, string> = {
 export default function AgentStreamPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const session = sessions.find((s) => s.id === sessionId)
-  const [questionOpen, setQuestionOpen] = useState(session?.status === 'waiting_input')
 
   if (!session) {
     return (
@@ -48,8 +47,10 @@ export default function AgentStreamPage() {
     toast.info('Session cancellation not available in demo')
   }
 
+  const isActive = session.status === 'running' || session.status === 'waiting_input' || session.status === 'idle'
+
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex flex-1 flex-col min-h-0">
       {/* Header */}
       <div className="border-b border-edge px-4 py-3">
         <div className="flex items-center justify-between">
@@ -61,7 +62,7 @@ export default function AgentStreamPage() {
               </Link>
             </Button>
             <div className="h-4 w-px bg-edge" />
-            <span className="text-sm font-medium text-ink">{session.agentName || 'Unassigned'}</span>
+            <span className="text-sm font-medium text-ink">{session.name}</span>
             <Badge variant={statusVariantMap[session.status] ?? 'default'}>
               {statusLabelMap[session.status] ?? session.status}
             </Badge>
@@ -79,38 +80,27 @@ export default function AgentStreamPage() {
           )}
         </div>
 
-        {/* Epic / Bead context */}
-        <div className="mt-2 ml-[72px] space-y-0.5">
-          <Link
-            to={`/board?epic=${session.epicId}`}
-            className="flex items-center gap-1.5 text-xs text-ink-secondary hover:text-accent transition-colors"
-          >
-            <LinkIcon className="h-3 w-3 shrink-0" />
-            <span>Epic: {session.epicTitle}</span>
-          </Link>
-          {session.beadTitle && (
-            <div className="flex items-center gap-1.5 pl-[18px] text-xs text-ink-muted">
-              <ArrowRight className="h-2.5 w-2.5 shrink-0" />
-              <span>Bead: {session.beadTitle}</span>
-            </div>
-          )}
-        </div>
+        {/* Permission mode bar */}
+        {isActive && (
+          <div className="mt-2 ml-[72px]">
+            <PermissionModeBar sessionId={session.id} currentMode={session.permissionMode} />
+          </div>
+        )}
       </div>
 
       {/* Stream */}
-      <AgentStreamView sessionId={session.id} />
+      <div className="flex-1 min-h-0">
+        <AgentStreamView sessionId={session.id} />
+      </div>
 
-      {/* Stats bar */}
-      <SessionStatsBar session={session} />
-
-      {/* Question dialog */}
-      {session.question && session.status === 'waiting_input' && (
-        <AskQuestionDialog
+      {/* Stats bar + input */}
+      <div className="shrink-0">
+        <SessionStatsBar session={session} />
+        <SessionInput
           session={session}
-          open={questionOpen}
-          onOpenChange={setQuestionOpen}
+          onCancel={handleCancel}
         />
-      )}
+      </div>
     </div>
   )
 }

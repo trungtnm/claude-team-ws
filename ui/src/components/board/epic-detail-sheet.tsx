@@ -83,7 +83,7 @@ export function EpicDetailSheet() {
   const { selectedEpicId, setSelectedEpicId } = useBoardStore()
   const navigate = useNavigate()
   const epic = epics.find((e) => e.id === selectedEpicId)
-  const epicSessions = sessions.filter((s) => s.epicId === selectedEpicId)
+  const epicSessions = sessions.filter((s) => s.id === selectedEpicId).slice(0, 0) // No epicId field in demo sessions
   // assignee resolved from local state below
 
   const [activeTab, setActiveTab] = useState<TabId>('overview')
@@ -521,7 +521,7 @@ export function EpicDetailSheet() {
 
                 {epic.prUrl && epic.prNumber && (<div><h4 className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">Pull Request</h4><button onClick={handleViewPR} className="flex items-center gap-1.5 text-sm text-accent hover:underline cursor-pointer"><ExternalLink className="h-3.5 w-3.5" /> PR #{epic.prNumber}</button>{epic.prStatus && <Badge variant="outline" className="text-[10px] mt-1">{epic.prStatus.replace(/_/g, ' ')}</Badge>}</div>)}
 
-                {epicSessions.length > 0 && (<div><h4 className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">Sessions</h4><div className="space-y-2">{epicSessions.map((s) => (<button key={s.id} onClick={() => { setSelectedEpicId(null); navigate(`/agents/${s.id}`) }} className="w-full rounded-[var(--radius-md)] border border-edge bg-surface-raised p-2 text-left hover:bg-surface-elevated transition-colors cursor-pointer"><div className="flex items-center gap-1.5"><span className={cn('inline-block h-2 w-2 rounded-full', sessionStatusColors[s.status], (s.status === 'running' || s.status === 'waiting_input') && 'animate-pulse')} /><span className="text-xs font-medium text-ink truncate">{s.agentName || 'Queued'}</span></div><div className="mt-1 flex items-center gap-2 text-[10px] text-ink-muted"><span>{s.status.replace('_', ' ')}</span><span>{formatDuration(s.duration)}</span></div></button>))}</div></div>)}
+                {epicSessions.length > 0 && (<div><h4 className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">Sessions</h4><div className="space-y-2">{epicSessions.map((s) => (<button key={s.id} onClick={() => { setSelectedEpicId(null); navigate(`/agents/${s.id}`) }} className="w-full rounded-[var(--radius-md)] border border-edge bg-surface-raised p-2 text-left hover:bg-surface-elevated transition-colors cursor-pointer"><div className="flex items-center gap-1.5"><span className={cn('inline-block h-2 w-2 rounded-full', sessionStatusColors[s.status], (s.status === 'running' || s.status === 'waiting_input') && 'animate-pulse')} /><span className="text-xs font-medium text-ink truncate">{s.name || 'Queued'}</span></div><div className="mt-1 flex items-center gap-2 text-[10px] text-ink-muted"><span>{s.status.replace('_', ' ')}</span><span>{formatDuration(s.duration)}</span></div></button>))}</div></div>)}
 
                 <div className="space-y-1">
                   <div className="flex items-center gap-1.5 text-[10px] text-ink-muted"><Clock className="h-3 w-3" /> Created {formatTimestamp(epic.createdAt)}</div>

@@ -29,7 +29,7 @@ export function AgentAlertBar() {
             AGENT WAITING
           </span>
           <span className="text-sm font-medium text-ink">
-            {session.agentName}
+            {session.name}
           </span>
           <span className="truncate text-sm text-ink-secondary">
             {truncatedQuestion}
