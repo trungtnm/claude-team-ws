@@ -36,8 +36,11 @@ test-results/
 playwright-report/
 blob-report/
 
-# UI demo build output
-ui/dist/
+# Old packages (nuked — rebuilding from scratch)
+packages/
 
-# Playgrounds
+# UI demo (untracked reference prototype)
+ui/
+
+# Playgrounds (untracked reference implementations)
 playgrounds/
