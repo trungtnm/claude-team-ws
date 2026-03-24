@@ -1,5 +1,5 @@
 const columns = [
-  { id: 'draft', label: 'Nháp' },
+  { id: 'blocked', label: 'Blocked' },
   { id: 'ready', label: 'Sẵn sàng' },
   { id: 'in_progress', label: 'Đang thực hiện' },
   { id: 'in_review', label: 'Đang xem xét' },

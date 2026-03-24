@@ -56,7 +56,7 @@ export interface Epic {
   id: string
   projectId: string
   title: string
-  status: 'draft' | 'ready' | 'in_progress' | 'in_review' | 'done'
+  status: 'blocked' | 'ready' | 'in_progress' | 'in_review' | 'done'
   priority: 'p0' | 'p1' | 'p2' | 'p3'
   createdAt: string
 }

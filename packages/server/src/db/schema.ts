@@ -82,7 +82,7 @@ export const epics = sqliteTable('epics', {
   project_id: text('project_id').notNull().references(() => projects.id),
   bead_epic_id: text('bead_epic_id').notNull(),
   git_branches: text('git_branches').notNull().default('[]'),
-  ui_status: text('ui_status', { enum: ['draft', 'ready', 'in_progress', 'in_review', 'done', 'cancelled'] }).notNull().default('draft'),
+  ui_status: text('ui_status', { enum: ['blocked', 'ready', 'in_progress', 'in_review', 'done', 'cancelled'] }).notNull().default('blocked'),
   scope_analysis: text('scope_analysis'),
   split_proposal: text('split_proposal'),
   created_at: integer('created_at').notNull().default(sql`(unixepoch())`),

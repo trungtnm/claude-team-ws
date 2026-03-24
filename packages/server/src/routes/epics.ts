@@ -17,7 +17,7 @@ const createEpicSchema = z.object({
 })
 
 const updateEpicSchema = z.object({
-  ui_status: z.enum(['draft', 'ready', 'in_progress', 'in_review', 'done', 'cancelled']).optional(),
+  ui_status: z.enum(['blocked', 'ready', 'in_progress', 'in_review', 'done', 'cancelled']).optional(),
   git_branches: z.string().optional(),
   scope_analysis: z.string().nullable().optional(),
   split_proposal: z.string().nullable().optional(),
