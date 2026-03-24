@@ -35,3 +35,9 @@ data/
 test-results/
 playwright-report/
 blob-report/
+
+# UI demo build output
+ui/dist/
+
+# Playgrounds
+playgrounds/
