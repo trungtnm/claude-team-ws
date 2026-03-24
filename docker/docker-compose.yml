@@ -1,0 +1,59 @@
+services:
+  # ─── MCP Agent Mail ──────────────────────────────────
+  agent-mail:
+    build:
+      context: ./agent-mail
+      dockerfile: Dockerfile
+    container_name: ctw-agent-mail
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - agent-mail-data:/app/data
+    environment:
+      - MCP_HTTP_TOKEN=${MCP_AGENT_MAIL_TOKEN}
+      - MCP_AGENT_MAIL_DB_PATH=/app/data/agent_mail.db
+      - MCP_AGENT_MAIL_ARCHIVE_PATH=/app/data/archive
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8765/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─── CM Memory Server ────────────────────────────────
+  cm-memory:
+    build:
+      context: ./cm
+      dockerfile: Dockerfile
+    container_name: ctw-cm-memory
+    ports:
+      - "127.0.0.1:9900:9900"
+    volumes:
+      - cm-data:/root/.cass-memory
+      - ${PROJECT_ROOT:-.}/.cass:/workspace/.cass
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CM_PORT=9900
+      - CM_WORKSPACE=/workspace
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:9900/health').then(r => { if (!r.ok) process.exit(1) })"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  agent-mail-data:
+    driver: local
+  cm-data:
+    driver: local
