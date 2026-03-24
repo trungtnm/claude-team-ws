@@ -73,8 +73,16 @@ pnpm docker:down      # Stop containers
 - One class per external tool/service in `services/`
 - CLI tools (br, bv, cass, git, gh): wrap via `child_process.execFile` with `promisify`
 - Docker services (Agent Mail, CM): wrap via `fetch` HTTP client
-- Long-running processes (claude CLI): use `child_process.spawn` with NDJSON streaming
+- Long-running processes (claude CLI): use `@anthropic-ai/claude-agent-sdk` query() with AbortController
 - All service errors must include context: `throw new Error(\`BeadsService.show failed for ${beadId}: ${err.message}\`)`
+
+### Agent SDK (Programmatic Claude Code)
+- Use `@anthropic-ai/claude-agent-sdk` for running Claude Code sessions programmatically — never raw CLI spawn
+- Reference implementation: `playgrounds/agents/` (working playground with real sessions)
+- `canUseTool` callback return MUST include `updatedInput` field — `{ behavior: 'allow', updatedInput: input }`
+- AskUserQuestion: hold `canUseTool` promise, resolve with `{ behavior: 'allow', updatedInput: { ...input, answers: { q: answer } } }`
+- Session resume: pass `resume: sessionId` in options (UUID from system.init event)
+- Context window data: extract from `assistant.message.usage` (input_tokens + cache_creation + cache_read)
 
 ### Frontend
 - Pages in `pages/`, components in `components/{domain}/`, shared in `components/ui/`

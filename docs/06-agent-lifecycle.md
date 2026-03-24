@@ -12,7 +12,7 @@ Trigger → Scope Gate → Git Branch → Context Build → Spawn → Stream →
 
 ## Crash Recovery (Server Restart)
 
-When the Express server crashes or restarts (PM2 auto-restart, deploy update), running claude CLI processes remain alive (orphaned processes). The server needs to re-attach.
+When the Express server crashes or restarts (PM2 auto-restart, deploy update), active agent sessions need to be handled. The Agent SDK handles process lifecycle internally — cancellation is done via `abortController.abort()` rather than PID-based process management.
 
 ### On Startup: Recovery Sequence
 
@@ -24,37 +24,28 @@ async function recoverOrphanedSessions(): Promise<void> {
     .where(inArray(sessions.status, ['running', 'waiting_input']))
 
   for (const session of orphaned) {
-    if (!session.pid) {
-      // No PID recorded — mark as failed
-      await markSessionFailed(session.id, 'Server restarted before PID recorded')
-      continue
-    }
+    // 2. The Agent SDK manages process lifecycle internally.
+    //    On server restart, the AbortController reference is lost.
+    //    Cancel via abortController.abort() is only possible for sessions
+    //    started in the current server process.
 
-    // 2. Check if PID is still alive
-    const isAlive = isPidAlive(session.pid)
+    if (session.claude_session_id) {
+      // 3a. Session has a claude_session_id — try to recover events from session log
+      log.info(`Recovering session ${session.id} (claude session: ${session.claude_session_id})`)
 
-    if (isAlive) {
-      // 3a. Process still running — re-attach to stdout
-      log.info(`Re-attaching to session ${session.id} (PID ${session.pid})`)
-
-      // Re-open /proc/<pid>/fd/1 or use ptrace — platform-specific
-      // On macOS: cannot re-attach to stdout of existing process easily
-      // Pragmatic solution: mark as "detached", let it finish naturally
       await db.update(sessions)
         .set({ status: 'detached' })
         .where(eq(sessions.id, session.id))
 
-      // Monitor PID for exit (poll every 5s)
-      monitorPidForExit(session.pid, session.id)
+      // Attempt event recovery from session log file
+      await handleDetachedSessionExit(session.id)
     } else {
-      // 3b. Process dead — mark as failed
-      log.warn(`Session ${session.id} (PID ${session.pid}) is dead`)
-      await markSessionFailed(session.id, 'Process died during server restart')
+      // 3b. No session ID — mark as failed
+      log.warn(`Session ${session.id} has no claude_session_id`)
+      await markSessionFailed(session.id, 'Server restarted before session ID recorded')
 
-      // Clean up: check if branch was pushed, maybe resume later
       await logActivity(session.project_id, null, 'session_crash_recovered', {
         session_id: session.id,
-        pid: session.pid,
         recommendation: 'Resume session manually if needed'
       })
     }
@@ -62,27 +53,9 @@ async function recoverOrphanedSessions(): Promise<void> {
 
   // 4. Process queue — in case slots opened up
   const projectIds = [...new Set(orphaned.map(s => s.project_id))]
-  for (const pid of projectIds) {
-    await agentQueue.processQueue(pid)
+  for (const projectId of projectIds) {
+    await agentQueue.processQueue(projectId)
   }
-}
-
-function isPidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0) // signal 0 = check existence, don't kill
-    return true
-  } catch {
-    return false
-  }
-}
-
-function monitorPidForExit(pid: number, sessionId: string): void {
-  const interval = setInterval(async () => {
-    if (!isPidAlive(pid)) {
-      clearInterval(interval)
-      await handleDetachedSessionExit(sessionId)
-    }
-  }, 5_000) // check every 5 seconds
 }
 
 async function handleDetachedSessionExit(sessionId: string): Promise<void> {
@@ -181,9 +154,9 @@ async function recoverEventsFromSessionLog(session: Session): Promise<any[]> {
 
 | Limitation | Impact | Mitigation |
 |---|---|---|
-| **Cannot re-attach stdout pipe** | Lose real-time streaming after server restart | Recover from session log file (see below) |
-| **PID polling every 5s** | Not real-time — agent may finish at second 1, server detects at second 5 | Acceptable — 5s delay for crash recovery is not an issue |
-| **Session log may be incomplete** | If claude crashes mid-session, log file may also be corrupt | Fallback: check git branch commits |
+| **AbortController reference lost on restart** | Cannot cancel sessions started by previous server process | Recover from session log file; sessions complete naturally |
+| **Cannot resume SDK streaming** | Lose real-time streaming after server restart | Recover events from session log file |
+| **Session log may be incomplete** | If agent crashes mid-session, log file may also be corrupt | Fallback: check git branch commits |
 
 **Recovery priority chain** (try from top to bottom):
 
@@ -207,10 +180,10 @@ async function recoverEventsFromSessionLog(session: Session): Promise<any[]> {
 ┌────────────────────────────────────────────────────────────┐
 │ ⚠ DETACHED — Server restarted while agent was running      │
 │                                                            │
-│ BlueLake • Rate Limiting • PID 12345 still alive           │
+│ BlueLake • Rate Limiting • session still active             │
 │                                                            │
-│ Stream unavailable (server lost pipe to process).          │
-│ Agent is still running. Will auto-detect completion.       │
+│ Stream unavailable (server restarted).                     │
+│ Agent session may still be active. Recovering events...    │
 │                                                            │
 │ [Recovering events...] 45 events recovered from log        │
 │                                                            │
@@ -222,7 +195,7 @@ async function recoverEventsFromSessionLog(session: Session): Promise<any[]> {
 │ ...                                                        │
 │ (events up to server restart point)                        │
 │                                                            │
-│ ⏳ Waiting for agent to complete (checking every 5s)...     │
+│ ⏳ Recovering events from session log...                     │
 │                                              [Cancel]      │
 └────────────────────────────────────────────────────────────┘
 ```
@@ -609,120 +582,193 @@ ${isMultiRepo ? `
 
 ## Phase 5: Agent Spawn
 
+The Agent SDK handles process spawning, NDJSON parsing, and typed message delivery internally. Instead of raw `spawn('claude', args)`, we use the `query()` function from `@anthropic-ai/claude-agent-sdk`.
+
+Cancellation uses `AbortController` instead of PID tracking — call `abortController.abort()` to stop a running session.
+
 ```typescript
+import { query } from '@anthropic-ai/claude-agent-sdk'
+
 async function spawnAgent(session: Session, prompt: string): Promise<void> {
   const claudeSessionId = crypto.randomUUID()
 
-  // Build CLI args
-  // NOTE: Do NOT use --bare. Reason:
-  // --bare skips session persistence → ~/.claude/ does not write session log
-  // → cass index cannot find the session → Shared Memory (CASS) is disabled
-  // Trade-off: without --bare, claude loads hooks + LSP + plugin sync
-  // → ~2-3s slower on startup, but preserves CASS integration
-  const args = [
-    '-p',                                    // Print mode (non-interactive)
-    '--output-format=stream-json',           // NDJSON streaming
-    '--verbose',                             // Include tool details
-    '--session-id', claudeSessionId,         // For resume
-    '--model', session.model,                // sonnet/opus/haiku
-    '--add-dir', project.repos[0].path,      // Project access
-    prompt
-  ]
-
-  // Spawn process
-  const proc = spawn('claude', args, {
-    cwd: project.repos[0].path,
-    env: {
-      ...process.env,
-      // Inject Agent Mail config for the agent
-      MCP_AGENT_MAIL_URL: config.agentMailUrl,
-      MCP_AGENT_MAIL_TOKEN: config.agentMailToken,
+  const agentQuery = query({
+    prompt,
+    options: {
+      model: session.model,
+      cwd: project.repos[0].path,
+      additionalDirectories: [project.repos[0].path],
+      permissionMode: project.permissionMode,
+      abortController: session.abortController,
+      allowDangerouslySkipPermissions: project.permissionMode === 'bypassPermissions',
+      settingSources: ['user', 'project'],
+      systemPrompt: { type: 'preset', preset: 'claude_code' },
+      canUseTool: async (toolName, input) => {
+        if (toolName === 'AskUserQuestion') {
+          return await handleAskUserQuestionPermission(session, input)
+        }
+        // Auto-approve all other tools
+        return { behavior: 'allow' as const, updatedInput: input }
+      },
     },
-    stdio: ['pipe', 'pipe', 'pipe']
   })
 
-  // Record PID
+  // Record session start
   await db.update(sessions)
     .set({
-      pid: proc.pid,
       claude_session_id: claudeSessionId,
       status: 'running',
       started_at: Math.floor(Date.now() / 1000)
     })
     .where(eq(sessions.id, session.id))
 
-  // Stream stdout (NDJSON)
-  const rl = readline.createInterface({ input: proc.stdout })
-  rl.on('line', async (line) => {
-    try {
-      const event = JSON.parse(line)
-      await handleStreamEvent(session.id, event)
-    } catch (e) {
-      // Non-JSON line (rare) — log as system event
-      await storeEvent(session.id, 'system', { raw: line })
-    }
-  })
-
-  // Stream stderr
-  proc.stderr.on('data', (chunk) => {
-    const text = chunk.toString()
-    storeEvent(session.id, 'error', { message: text })
-    socketManager.toSession(session.id, 'session:event', {
-      event_type: 'error', data: { message: text }
-    })
-  })
-
-  // Handle exit
-  proc.on('exit', (code, signal) => {
-    handleAgentExit(session.id, code, signal)
-  })
+  // Iterate over SDK messages (replaces readline NDJSON parsing)
+  for await (const message of agentQuery) {
+    if (session.abortController.signal.aborted) break
+    await handleSDKMessage(session.id, message)
+  }
 }
 ```
 
 ---
 
-## Phase 6: Stream Processing
+## Agent SDK Reference
+
+### Installation
+
+```bash
+npm install @anthropic-ai/claude-agent-sdk
+```
+
+### Key Types
+
+The SDK exports typed message types for the async iterator returned by `query()`:
+
+| Type | Description |
+|---|---|
+| `SDKAssistantMessage` | `message.type === 'assistant'` — model response with `content[]` blocks (text, tool_use) |
+| `SDKUserMessage` | `message.type === 'user'` — tool results with `content[]` blocks (tool_result) |
+| `SDKResultMessage` | `message.type === 'result'` — final result with `total_cost_usd`, `num_turns`, `usage`, `modelUsage` |
+| `SDKSystemMessage` | `message.type === 'system'` — system events; `subtype === 'init'` carries `session_id`, `tools`, `slash_commands`, `agents`, `skills` |
+
+### Session Resume
+
+To resume a previous session, pass the session ID (UUID from `system.init` message) in options:
 
 ```typescript
-async function handleStreamEvent(sessionId: string, event: any): Promise<void> {
-  // 1. Determine event type
-  const eventType = classifyEvent(event)
+const resumed = query({
+  prompt: 'Continue where you left off',
+  options: {
+    ...baseOptions,
+    resume: previousSessionId, // UUID from system.init event
+  },
+})
+```
 
-  // 2. Store in DB
+### Enriching Capabilities
+
+After creating a query, inspect available capabilities:
+
+```typescript
+const agentQuery = query({ prompt, options })
+const commands = agentQuery.supportedCommands()  // Available slash commands
+const agents = agentQuery.supportedAgents()      // Available sub-agents
+```
+
+### File Attachments
+
+The SDK does not support direct file attachments in the prompt. Instead, save files to disk and reference the path in the prompt — the agent will use the `Read` tool to access them.
+
+### `canUseTool` Return Format
+
+The `updatedInput` field is **REQUIRED** (not optional) — omitting it causes a ZodError. Always include it:
+
+```typescript
+// CORRECT
+return { behavior: 'allow' as const, updatedInput: input }
+
+// WRONG — causes ZodError
+return { behavior: 'allow' as const }
+```
+
+### Test Cleanup
+
+After integration tests, delete session files to avoid accumulation:
+
+```bash
+rm -f ~/.claude/projects/<hash>/sessions/<session-id>.jsonl
+```
+
+---
+
+## Phase 6: Stream Processing (SDK Message Handling)
+
+The Agent SDK delivers typed messages instead of raw NDJSON lines. No need for `classifyEvent` or `readline` parsing — the SDK handles this internally.
+
+```typescript
+async function handleSDKMessage(sessionId: string, message: SDKMessage): Promise<void> {
+  if (message.type === 'assistant') {
+    // message.message.content[] has {type: "text"} and {type: "tool_use"} blocks
+    for (const block of message.message.content) {
+      if (block.type === 'text') {
+        await storeAndBroadcast(sessionId, 'assistant', block.text)
+      } else if (block.type === 'tool_use') {
+        await storeAndBroadcast(sessionId, 'tool_use', { name: block.name, input: block.input })
+      }
+    }
+    // Extract context window usage from message.message.usage
+    const usage = message.message.usage
+    if (usage) {
+      // usage.input_tokens, usage.cache_creation_input_tokens, usage.cache_read_input_tokens
+      const usedPct = (usage.input_tokens + usage.cache_creation_input_tokens + usage.cache_read_input_tokens) / 200000 * 100
+      await storeAndBroadcast(sessionId, 'usage', { percent: usedPct, raw: usage })
+    }
+  } else if (message.type === 'user') {
+    // Tool results: message.message.content[{type: "tool_result", content, is_error}]
+    for (const block of message.message.content) {
+      if (block.type === 'tool_result') {
+        await storeAndBroadcast(sessionId, 'tool_result', {
+          tool_use_id: block.tool_use_id,
+          content: block.content,
+          is_error: block.is_error
+        })
+      }
+    }
+  } else if (message.type === 'result') {
+    // Final result: message.total_cost_usd, message.num_turns, message.usage, message.modelUsage
+    await storeAndBroadcast(sessionId, 'result', {
+      cost_usd: message.total_cost_usd,
+      num_turns: message.num_turns,
+      usage: message.usage,
+      model_usage: message.modelUsage
+    })
+    await handleAgentExit(sessionId, 0, null)
+  } else if (message.type === 'system' && message.subtype === 'init') {
+    // Session initialized: message.session_id, message.tools, message.slash_commands, message.agents, message.skills
+    await storeAndBroadcast(sessionId, 'system_init', {
+      claude_session_id: message.session_id,
+      tools: message.tools,
+      agents: message.agents,
+      skills: message.skills
+    })
+  }
+}
+
+async function storeAndBroadcast(sessionId: string, eventType: string, data: unknown): Promise<void> {
   const stored = await db.insert(sessionEvents).values({
     session_id: sessionId,
     event_type: eventType,
-    data: JSON.stringify(event),
+    data: JSON.stringify(data),
     created_at: Math.floor(Date.now() / 1000)
   }).returning()
 
-  // 3. Broadcast via Socket.IO
   socketManager.toSession(sessionId, 'session:event', {
     session_id: sessionId,
     event_id: stored[0].id,
     event_type: eventType,
-    data: event,
+    data,
     timestamp: Date.now()
   })
-
-  // 4. Handle special events
-  if (eventType === 'tool_use' && event.tool?.name === 'AskUserQuestion') {
-    await handleAskUserQuestion(sessionId, event)
-  }
-
-  // 5. Periodic progress update (every 10 events)
-  if (stored[0].id % 10 === 0) {
-    await emitProgressUpdate(sessionId)
-  }
-}
-
-function classifyEvent(event: any): string {
-  if (event.type === 'system') return 'system'
-  if (event.type === 'assistant') return 'assistant'
-  if (event.type === 'tool_use') return 'tool_use'
-  if (event.type === 'tool_result') return 'tool_result'
-  if (event.type === 'result') return 'result'
-  return 'system'
 }
 ```
 
@@ -730,43 +776,119 @@ function classifyEvent(event: any): string {
 
 ## Phase 7: AskUserQuestion Handling
 
-3 modes, configurable per project.
+With the Agent SDK, AskUserQuestion is handled via the `canUseTool` callback in `query()` options (see Phase 5). The callback holds the SDK's async iterator until the user answers, then returns the answer as part of `updatedInput`.
+
+> **WARNING**: Do NOT return `{ behavior: 'deny', message: 'User answered: X' }` from `canUseTool` for AskUserQuestion. This causes the agent to see the answer as a tool error, retry AskUserQuestion, and trigger `InputValidationError: The required parameter questions[0].options[3].description is missing`. Always use `{ behavior: 'allow', updatedInput: { ...input, answers } }`.
+
+### AskUserQuestion Input Format
 
 ```typescript
-async function handleAskUserQuestion(sessionId: string, event: any): Promise<void> {
-  const session = await getSession(sessionId)
+// CRITICAL: AskUserQuestion input format is:
+// { questions: [{ question: string, header: string, options: [{ label, description }], multiSelect: boolean }] }
+// NOT a flat { question: string, options: string[] }
+```
+
+### canUseTool Handler (3 modes, configurable per project)
+
+```typescript
+async function handleAskUserQuestionPermission(session: Session, input: unknown) {
+  const questions = (input as any).questions as any[]
+  const firstQ = questions?.[0]
+  const question = {
+    text: firstQ?.question ?? '',
+    options: firstQ?.options?.map((o: any) => o.label ?? o.description ?? String(o)) ?? [],
+    context: firstQ?.header ?? '',
+  }
+
   const project = await getProject(session.project_id)
   const mode = project.ask_question_mode // 'pause' | 'auto' | 'hybrid'
 
-  const question = {
-    id: event.tool?.input?.question_id || crypto.randomUUID(),
-    text: event.tool?.input?.question || '',
-    options: event.tool?.input?.options || null,
-    context: extractContext(event)
-  }
+  let userAnswer: string
 
-  if (mode === 'pause') {
-    // Always pause and ask human
-    await pauseAndAsk(sessionId, question, 'pause', 'high')
-
-  } else if (mode === 'auto') {
+  if (mode === 'auto') {
     // Always auto-answer using CM rules + CASS
-    const autoAnswer = await generateAutoAnswer(question, session)
-    await submitAnswer(sessionId, question.id, autoAnswer, 'auto')
+    userAnswer = await generateAutoAnswer(question, session)
 
   } else if (mode === 'hybrid') {
-    // Assess risk level
     const risk = assessQuestionRisk(question)
-
     if (risk === 'low') {
-      // Auto-answer with timeout
+      // Auto-answer with timeout — give human 30s to override
       const autoAnswer = await generateAutoAnswer(question, session)
-      await pauseAndAsk(sessionId, question, 'hybrid', 'low', autoAnswer, 30) // 30s timeout
+      userAnswer = await pauseAndAskWithTimeout(session, question, autoAnswer, 30)
     } else {
-      // Pause for human
-      await pauseAndAsk(sessionId, question, 'hybrid', 'high')
+      userAnswer = await pauseAndAsk(session, question)
     }
+
+  } else {
+    // 'pause' mode — always pause and ask human
+    userAnswer = await pauseAndAsk(session, question)
   }
+
+  // CORRECT: Allow with pre-filled answers
+  // DO NOT use { behavior: 'deny' } — causes retry loops and validation errors
+  return {
+    behavior: 'allow' as const,
+    updatedInput: {
+      ...input,
+      answers: { [firstQ?.question ?? '']: userAnswer },
+    },
+  }
+}
+
+async function pauseAndAsk(session: Session, question: Question): Promise<string> {
+  // Set session to waiting_input, emit to UI
+  session.status = 'waiting_input'
+  await db.update(sessions)
+    .set({ status: 'waiting_input' })
+    .where(eq(sessions.id, session.id))
+
+  socketManager.toSession(session.id, 'session:question', { question })
+
+  await notificationService.send(session.user_id, {
+    type: 'question_waiting',
+    title: `Agent needs input: ${question.text.slice(0, 50)}...`,
+    link: `/projects/${session.project_id}/agents?session=${session.id}`
+  })
+
+  // Hold the promise until user answers via the UI
+  const userAnswer = await new Promise<string>(resolve => {
+    session.pendingAnswer = resolve
+  })
+
+  // Restore running status
+  await db.update(sessions)
+    .set({ status: 'running' })
+    .where(eq(sessions.id, session.id))
+
+  return userAnswer
+}
+
+async function pauseAndAskWithTimeout(
+  session: Session,
+  question: Question,
+  autoAnswer: string,
+  timeoutSeconds: number
+): Promise<string> {
+  return new Promise<string>(resolve => {
+    // Set up human override
+    session.pendingAnswer = (humanAnswer: string) => {
+      clearTimeout(timer)
+      resolve(humanAnswer)
+    }
+
+    // Emit to UI with auto-answer and countdown
+    socketManager.toSession(session.id, 'session:question', {
+      question,
+      auto_answer: autoAnswer,
+      timeout_seconds: timeoutSeconds
+    })
+
+    // Auto-accept after timeout
+    const timer = setTimeout(() => {
+      session.pendingAnswer = undefined
+      resolve(autoAnswer)
+    }, timeoutSeconds * 1000)
+  })
 }
 
 function assessQuestionRisk(question: Question): 'low' | 'high' {
@@ -790,48 +912,6 @@ function assessQuestionRisk(question: Question): 'low' | 'high' {
   if (lowRiskPatterns.some(p => p.test(question.text))) return 'low'
   return 'high' // default to safe
 }
-
-async function pauseAndAsk(
-  sessionId: string,
-  question: Question,
-  mode: string,
-  riskLevel: string,
-  autoAnswer?: string,
-  timeoutSeconds?: number
-): Promise<void> {
-  // Update session status
-  await db.update(sessions)
-    .set({ status: 'waiting_input' })
-    .where(eq(sessions.id, sessionId))
-
-  // Emit to session room
-  socketManager.toSession(sessionId, 'session:question', {
-    session_id: sessionId,
-    question,
-    mode,
-    risk_level: riskLevel,
-    auto_answer: autoAnswer || null,
-    timeout_seconds: timeoutSeconds || null
-  })
-
-  // Send notification
-  const session = await getSession(sessionId)
-  await notificationService.send(session.user_id, {
-    type: 'question_waiting',
-    title: `Agent needs input: ${question.text.slice(0, 50)}...`,
-    link: `/projects/${session.project_id}/agents?session=${sessionId}`
-  })
-
-  // Auto-accept timeout (for hybrid LOW risk)
-  if (timeoutSeconds && autoAnswer) {
-    setTimeout(async () => {
-      const currentStatus = await getSessionStatus(sessionId)
-      if (currentStatus === 'waiting_input') {
-        await submitAnswer(sessionId, question.id, autoAnswer, 'timeout')
-      }
-    }, timeoutSeconds * 1000)
-  }
-}
 ```
 
 ---
@@ -848,7 +928,8 @@ async function handleAgentExit(
 
   // 1. Determine final status
   let status: string
-  if (signal === 'SIGTERM' || signal === 'SIGKILL') {
+  if (signal === 'aborted') {
+    // Session was cancelled via abortController.abort()
     status = 'cancelled'
   } else if (exitCode === 0) {
     status = 'completed'

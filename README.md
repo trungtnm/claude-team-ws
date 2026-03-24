@@ -258,6 +258,10 @@ claude-team-ws/
 │       └── package.json
 │
 ├── ui/                          # Standalone UI demo (Vite + React, port 5174)
+├── playgrounds/
+│   └── agents/                  # Agent Mission Control playground (real Claude Code sessions)
+│       ├── server/              # Express + Socket.IO + Agent SDK
+│       └── src/                 # React UI (Vite)
 ├── package.json                 # pnpm workspaces root
 ├── pnpm-workspace.yaml
 ├── ecosystem.config.cjs         # PM2
@@ -286,11 +290,8 @@ PM clicks "Start" on Epic
 5. CASS: cass search --robot "similar to <epic>" → past learnings
     │
     ▼
-6. Spawn: claude -p --output-format=stream-json \
-     --model <model> --session-id <uuid> \
-     --add-dir <repo-path> \
-     "<epic prompt + CM rules + CASS learnings>"
-     (do NOT use --bare: keep session persistence for CASS indexing)
+6. Spawn: query({ prompt, options: { model, cwd, permissionMode, ... } })
+   via @anthropic-ai/claude-agent-sdk (NOT raw claude CLI)
     │
     ▼
 7. Stream: parse NDJSON → store events → Socket.IO → UI
@@ -408,6 +409,16 @@ pnpm test              # 110+ unit tests
 pnpm test:integration  # Integration tests (real SQLite)
 pnpm test:e2e          # E2E tests (Playwright, auto-starts servers)
 ```
+
+### Agent Mission Control Playground
+
+```bash
+cd playgrounds/agents
+npm install
+npm run dev    # Express :3001 + Vite :5175
+```
+
+Open http://localhost:5175 to spawn and interact with Claude Code sessions.
 
 ---
 
