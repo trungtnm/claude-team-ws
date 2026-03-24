@@ -15,6 +15,42 @@
 
 **Why:** Stubs accumulate as tech debt, create false confidence (tests pass against mocks but fail against reality), and cause integration failures when agents assume stubs are real. Complete work or no work.
 
+## GOLDEN RULE: Integration Tests Own Their Database
+
+**Every integration test that touches a database MUST create a fresh database on startup and destroy it after the run — regardless of success or failure.** No test may rely on a pre-existing database, shared state from other tests, or leave behind database files after completion.
+
+**Requirements:**
+1. **Create a new in-memory SQLite** via `createTestDb()` at the start of each test file — never connect to `workspace.db` or any persistent DB
+2. **Clean all tables** via `cleanAllTables(sqlite)` in `beforeEach` — every individual test starts with a blank slate
+3. **Teardown is mandatory** — use `afterAll` / `afterEach` to close the DB connection. If the test crashes, the in-memory DB is automatically garbage-collected (no cleanup needed for in-memory)
+4. **Never share DB state between test files** — each `*.integration.test.ts` gets its own isolated database instance
+5. **Seed only what the test needs** — use `seedTestUser()`, `seedTestProject()` helpers to insert minimal required data per test
+
+**Pattern:**
+```typescript
+import { createTestDb } from '../db/test-db.js'
+import { cleanAllTables } from '../db/test-db.js'
+
+let db: ReturnType<typeof createTestDb>['db']
+let sqlite: ReturnType<typeof createTestDb>['sqlite']
+
+beforeAll(() => {
+  const testDb = createTestDb()
+  db = testDb.db
+  sqlite = testDb.sqlite
+})
+
+beforeEach(() => {
+  cleanAllTables(sqlite)
+})
+
+afterAll(() => {
+  sqlite.close()
+})
+```
+
+**Why:** A previous incident caused test-to-test pollution where a leftover row from one test made another test pass incorrectly. The bug only surfaced in CI where test ordering was randomized. Isolated databases eliminate this entire class of failure.
+
 ## The Project
 
 Semi-Auto Epic-Driven Dev Workspace. Web app for dev team to manage Epics, spawn Claude Code agents, review PRs.
