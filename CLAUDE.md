@@ -1,5 +1,20 @@
 # CLAUDE.md — claude-team-ws
 
+## GOLDEN RULE: No Stubs, No Mocks in Production Code
+
+**Every piece of delivered work MUST be complete and functional.** Do NOT write stubs, placeholder implementations, mocked return values, TODO markers, or "will be implemented later" code in the final codebase. If a dependency is not yet available (e.g., a backend API a frontend component needs, or a service another agent is building), you MUST:
+
+1. **Communicate via Agent Mail** — send a message to the responsible agent asking for the dependency, specifying what you need (endpoint, interface, data shape).
+2. **Wait for the dependency to be resolved** — do NOT invent your own stub/mock to unblock yourself. Block your bead and move to other ready work instead.
+3. **Only proceed when the real implementation exists** — integrate against the actual code, not a fake.
+
+**The only exceptions:**
+- Test files (`*.test.ts`, `*.integration.test.ts`, `*.spec.ts`) — mocks and test doubles are expected and required
+- UI demo directory — prototypes and visual demos may use placeholder data
+- The user explicitly asks for a stub or placeholder
+
+**Why:** Stubs accumulate as tech debt, create false confidence (tests pass against mocks but fail against reality), and cause integration failures when agents assume stubs are real. Complete work or no work.
+
 ## The Project
 
 Semi-Auto Epic-Driven Dev Workspace. Web app for dev team to manage Epics, spawn Claude Code agents, review PRs.
@@ -131,6 +146,13 @@ App SQLite (workspace.db)          Beads SQLite (.beads/beads.db)
 - **Unit**: Service classes, utility functions, middleware logic
 - **Integration**: Route handlers with real DB (CRUD correctness, validation, auth)
 - **E2E**: User flows (navigation, form submission, real-time updates)
+
+## Language Policy
+
+- **App UI language**: English — all labels, buttons, messages, error texts, toasts, and user-facing strings in the application MUST be in English
+- **Documentation** (`docs/`, `README.md`, comments): Vietnamese is allowed
+- **Code** (variables, functions, types): English only
+- **Bead titles/descriptions**: English
 
 ## Socket.IO Rooms & Events
 
@@ -279,3 +301,66 @@ Common pitfalls
 - "from_agent not registered": always `register_agent` in the correct `project_key` first.
 - "FILE_RESERVATION_CONFLICT": adjust patterns, wait for expiry, or use a non-exclusive reservation when appropriate.
 - Auth errors: if JWT+JWKS is enabled, include a bearer token with a `kid` that matches server JWKS; static bearer is used only when JWT is disabled.
+
+<!-- bv-agent-instructions-v1 -->
+
+---
+
+## Beads Workflow Integration
+
+This project uses [beads_viewer](https://github.com/Dicklesworthstone/beads_viewer) for issue tracking. Issues are stored in `.beads/` and tracked in git.
+
+### Essential Commands
+
+```bash
+# View issues (launches TUI - avoid in automated sessions)
+bv
+
+# CLI commands for agents (use these instead)
+bd ready              # Show issues ready to work (no blockers)
+bd list --status=open # All open issues
+bd show <id>          # Full issue details with dependencies
+bd create --title="..." --type=task --priority=2
+bd update <id> --status=in_progress
+bd close <id> --reason="Completed"
+bd close <id1> <id2>  # Close multiple issues at once
+bd sync               # Commit and push changes
+```
+
+### Workflow Pattern
+
+1. **Start**: Run `bd ready` to find actionable work
+2. **Claim**: Use `bd update <id> --status=in_progress`
+3. **Work**: Implement the task
+4. **Complete**: Use `bd close <id>`
+5. **Sync**: Always run `bd sync` at session end
+
+### Key Concepts
+
+- **Dependencies**: Issues can block other issues. `bd ready` shows only unblocked work.
+- **Priority**: P0=critical, P1=high, P2=medium, P3=low, P4=backlog (use numbers, not words)
+- **Types**: task, bug, feature, epic, question, docs
+- **Blocking**: `bd dep add <issue> <depends-on>` to add dependencies
+
+### Session Protocol
+
+**Before ending any session, run this checklist:**
+
+```bash
+git status              # Check what changed
+git add <files>         # Stage code changes
+bd sync                 # Commit beads changes
+git commit -m "..."     # Commit code
+bd sync                 # Commit any new beads changes
+git push                # Push to remote
+```
+
+### Best Practices
+
+- Check `bd ready` at session start to find available work
+- Update status as you work (in_progress → closed)
+- Create new issues with `bd create` when you discover tasks
+- Use descriptive titles and set appropriate priority/type
+- Always `bd sync` before ending session
+
+<!-- end-bv-agent-instructions -->
