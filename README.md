@@ -2,25 +2,25 @@
 
 ## Context
 
-Xây dựng workspace chung cho team dev trên Mac Mini host. PM/Dev capture ý tưởng, triage thành Epics, trigger Agent sessions, review qua PR workflow.
+A shared workspace for dev teams on a Mac Mini host. PM/Dev capture ideas, triage them into Epics, trigger Agent sessions, and review via PR workflow.
 
 ---
 
 ## Architecture Decisions (Finalized)
 
-| Quyết định | Lựa chọn |
+| Decision | Choice |
 |---|---|
 | **Stack** | Vite + React (SPA) + Express (API) + SQLite (Drizzle) + Socket.IO |
 | **Epic scope sizing** | Auto-detect + PM confirm |
-| **Concurrency** | N agents/project (configurable). Queue khi full |
+| **Concurrency** | N agents/project (configurable). Queue when full |
 | **Role model** | 4 roles: PM / Dev / TechLead / Viewer |
-| **Git strategy** | 1 branch/Epic, squash merge vào main |
+| **Git strategy** | 1 branch/Epic, squash merge into main |
 | **Notifications** | In-app + Slack/Discord webhook |
 | **AskUserQuestion** | Configurable 3 modes: pause, auto-decide, hybrid |
 | **Workspace model** | 1 workspace = 1 project. Multi-repo, shared 1 Beads DB |
-| **Cost tracking** | Không track trong UI |
+| **Cost tracking** | Not tracked in UI |
 | **Host** | Mac Mini, serving via Cloudflare Tunnel |
-| **Infrastructure** | Docker Compose cho Agent Mail + CM. CASS + br + bv native trên host |
+| **Infrastructure** | Docker Compose for Agent Mail + CM. CASS + br + bv native on host |
 
 ---
 
@@ -33,7 +33,7 @@ Xây dựng workspace chung cho team dev trên Mac Mini host. PM/Dev capture ý 
 │  ┌─── Docker Compose ────────────────────────────┐  │
 │  │                                                │  │
 │  │  agent-mail (Python MCP)     :8765            │  │
-│  │  ├─ Message broker cho multi-agent             │  │
+│  │  ├─ Message broker for multi-agent             │  │
 │  │  ├─ Thread-based coordination                  │  │
 │  │  └─ File reservations                          │  │
 │  │                                                │  │
@@ -59,18 +59,18 @@ Xây dựng workspace chung cho team dev trên Mac Mini host. PM/Dev capture ý 
 │  │                                                │  │
 │  └────────────────────────────────────────────────┘  │
 │                                                      │
-│  Cloudflare Tunnel ──── team truy cập remote ──────> │
+│  Cloudflare Tunnel ──── remote team access ────────> │
 └─────────────────────────────────────────────────────┘
 ```
 
-### Tại sao Docker cho Agent Mail + CM, native cho phần còn lại?
+### Why Docker for Agent Mail + CM, native for the rest?
 
-- **Agent Mail** (Python MCP server): Service chạy liên tục, cần isolated Python env, persistent message store. Docker đảm bảo clean restart, volume mount cho data
-- **CM** (Bun/TS MCP server): Service chạy liên tục trên port 9900, cần persistent playbook/rules. Docker isolation + restart policy
-- **CASS**: CLI tool thuần (Rust binary), không cần server. Gọi on-demand từ workspace app
-- **br/bv**: CLI tools, gọi qua `execFile`. Cần access filesystem trực tiếp (`.beads/` trong project)
-- **claude CLI**: Spawn OS process, cần access host filesystem + đã authenticated sẵn. Docker sẽ phức tạp hóa
-- **Workspace app**: Chạy native để dễ access filesystem, spawn processes, debug. PM2 cho auto-restart
+- **Agent Mail** (Python MCP server): Long-running service, needs isolated Python env, persistent message store. Docker ensures clean restart, volume mount for data
+- **CM** (Bun/TS MCP server): Long-running service on port 9900, needs persistent playbook/rules. Docker isolation + restart policy
+- **CASS**: Pure CLI tool (Rust binary), no server needed. Called on-demand from workspace app
+- **br/bv**: CLI tools, called via `execFile`. Need direct filesystem access (`.beads/` in project)
+- **claude CLI**: Spawns OS process, needs host filesystem access + pre-authenticated credentials. Docker would add unnecessary complexity
+- **Workspace app**: Runs native for easy filesystem access, process spawning, debugging. PM2 for auto-restart
 
 ---
 
@@ -78,21 +78,21 @@ Xây dựng workspace chung cho team dev trên Mac Mini host. PM/Dev capture ý 
 
 ### 1. Epic-Driven Dashboard (Capture → Triage → Epic)
 
-- **Capture Inbox**: Sidebar persistent, team throw ideas qua web, attributed by user
-- **Visual Triage**: Drag capture → tạo Epic. UI enrich (1-3 questions)
-- **Epic-First Kanban**: Epics là unit chính. Click → nested Beads
-- **Auto-Detect Split**: Click "Start" → analyze scope → đề xuất Beads → PM confirm
-- **Status flow**: `Draft → Ready → In Progress → In Review → Done`
-- **Multi-repo, shared Beads**: 1 project nhiều repos, share 1 Beads DB
+- **Capture Inbox**: Full page at `/captures`. New captures are created via a header CTA button (keyboard shortcut `Cmd+J`) that opens a Dialog. Attributed by user
+- **AI-Powered Triage**: 4-phase triage process on the `/captures` page — analyzes capture, suggests scope, generates acceptance criteria, and proposes Beads breakdown
+- **Epic-First Board**: Epics are the primary unit. Horizontal tab navigation: Board, Captures, Agents, Graph, Settings. Click an Epic for nested Beads detail
+- **Auto-Detect Split**: Click "Start" → analyze scope → propose Beads → PM confirm
+- **Status flow**: `Blocked → Ready → In Progress → In Review → Done` (Captures serve as the draft/intake stage; once triaged into an Epic, it starts as Blocked if it has dependencies, or Ready if unblocked)
+- **Multi-repo, shared Beads**: 1 project across multiple repos, sharing 1 Beads DB
 
 ### 2. Semi-Auto Execution Engine
 
-- **Trigger**: PM/Dev click "Start Agent Session" trên Epic card
+- **Trigger**: PM/Dev click "Start Agent Session" on Epic card
 - **Scope Gate**: Auto-analyze → split proposal → PM confirm
 - **Git Isolation**: `git checkout -b epic/<slug>` per repo
-- **Configurable Concurrency**: Admin set max. Queue với priority ordering
-- **Context Injection**: Worker nhận: Epic desc, AC, CM rules, CASS learnings
-- **Live Tracking**: Socket.IO streaming real-time trong Epic panel
+- **Configurable Concurrency**: Admin sets max concurrent agents. Queue with priority ordering
+- **Context Injection**: Worker receives: Epic description, acceptance criteria, CM rules, CASS learnings
+- **Live Tracking**: Socket.IO streaming real-time in Epic panel
 - **AskUserQuestion 3 modes** (configurable per project)
 
 ### 3. Quality Gate: PR → AI Review → Human Merge
@@ -100,32 +100,54 @@ Xây dựng workspace chung cho team dev trên Mac Mini host. PM/Dev capture ý 
 - **Auto PR**: Agent done → push → `gh pr create`
 - **AI Peer Review**: Auto-spawn Code Review Agent (UBS + Security + Standards)
 - **Human Review Module**: Diff + AI comments side-by-side
-- **Feedback Loop**: Human comment → Worker fix → push → lặp
+- **Feedback Loop**: Human comment → Worker fix → push → repeat
 - **Merge**: PM/TechLead squash merge → close Epic → update Beads
 
 ### 4. Shared Memory Hub (CASS + CM + Agent Mail)
 
-- **Agent Mail** (Docker, port 8765): Message broker cho multi-agent coordination
-  - Workers register khi spawn: `register_agent(project, "claude", model, agent_name)`
-  - Epic ID = thread_id: mọi messages trong Epic liên kết
-  - File reservations: prevent merge conflicts giữa concurrent agents
-  - Orchestrator poll inbox: monitor worker progress, detect blockers
+- **Agent Mail** (Docker, port 8765): Message broker for multi-agent coordination
+  - Workers register on spawn: `register_agent(project, "claude", model, agent_name)`
+  - Epic ID = thread_id: all messages within an Epic are linked
+  - File reservations: prevent merge conflicts between concurrent agents
+  - Orchestrator polls inbox: monitors worker progress, detects blockers
 - **CASS** (native CLI): Index sessions, semantic search
-  - `cass index` sau mỗi session complete
-  - Worker query `cass search --robot "similar problem"` trước khi bắt đầu Epic
+  - `cass index` after each session completes
+  - Worker queries `cass search --robot "similar problem"` before starting an Epic
   - Hybrid search: BM25 lexical + MiniLM vector
 - **CM** (Docker, port 9900): Team procedural memory
-  - Tab "Team Rules" trong UI. TechLead manage
-  - Worker call `cm_context` khi spawn → get relevant rules
-  - Code Review reject → `cm_feedback --harmful` → auto-synthesize rule
+  - "Team Rules" tab in UI. TechLead manages rules
+  - Worker calls `cm_context` on spawn → gets relevant rules
+  - Code Review rejection → `cm_feedback --harmful` → auto-synthesize rule
   - 90-day confidence decay. Anti-pattern learning (4x harmful multiplier)
   - Project-level rules (`.cass/playbook.yaml`) + global rules
 
 ### 5. Dependency Graph (bv-powered)
 
-- **React Flow** graph từ `bv --robot-plan`
+- **React Flow** graph from `bv --robot-plan`
 - **Color**: Red=Critical Path, Orange=Bottleneck, Green=Ready
-- **PM Decision Aid**: Visual guide chọn Epic nào trigger tiếp
+- **PM Decision Aid**: Visual guide for choosing which Epic to trigger next
+
+---
+
+## UI Layout
+
+The application uses a horizontal header-based navigation (no sidebar):
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  Logo + Project Selector  │  Board  Captures  Agents  Graph  Settings  │  [+ Capture (Cmd+J)]  🔔  👤  │
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│                     Page Content                         │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+- **Board** (`/`): Epic Kanban with status columns
+- **Captures** (`/captures`): Full-page capture list with AI triage workflow
+- **Agents** (`/agents`): Active agent sessions, stream viewer, Q&A panel
+- **Graph** (`/graph`): Dependency graph visualization (React Flow)
+- **Settings** (`/settings`): Project configuration, user management, CM rules
 
 ---
 
@@ -192,7 +214,7 @@ claude-team-ws/
 │   │   ├── src/
 │   │   │   ├── components/
 │   │   │   │   ├── kanban/      # Epic Kanban board
-│   │   │   │   ├── capture/     # Capture inbox sidebar
+│   │   │   │   ├── capture/     # Capture dialog + triage
 │   │   │   │   ├── agent/       # Agent stream + Q&A panel
 │   │   │   │   ├── review/      # PR review module (diff viewer)
 │   │   │   │   ├── graph/       # Dependency graph (React Flow)
@@ -235,6 +257,7 @@ claude-team-ws/
 │       │       └── rbac.ts
 │       └── package.json
 │
+├── ui/                          # Standalone UI demo (Vite + React, port 5174)
 ├── package.json                 # pnpm workspaces root
 ├── pnpm-workspace.yaml
 ├── ecosystem.config.cjs         # PM2
@@ -251,7 +274,7 @@ PM clicks "Start" on Epic
 1. Scope Gate: analyze Epic → split if needed → PM confirm
     │
     ▼
-2. Git: pull origin main → checkout -b epic/<slug> (PHẢI pull trước để tránh stale base)
+2. Git: pull origin main → checkout -b epic/<slug> (must pull first to avoid stale base)
     │
     ▼
 3. Agent Mail: register_agent(project, "claude", model, auto-name)
@@ -267,7 +290,7 @@ PM clicks "Start" on Epic
      --model <model> --session-id <uuid> \
      --add-dir <repo-path> \
      "<epic prompt + CM rules + CASS learnings>"
-     (KHÔNG dùng --bare: giữ session persistence cho CASS indexing)
+     (do NOT use --bare: keep session persistence for CASS indexing)
     │
     ▼
 7. Stream: parse NDJSON → store events → Socket.IO → UI
@@ -280,7 +303,7 @@ PM clicks "Start" on Epic
     │
     ▼
 9b. Merge flow: gh pr merge --squash → pull main → br close → br sync → git commit .beads/ → git push
-    (CRITICAL: phải commit+push .beads/ sau merge, nếu không team thấy stale state)
+    (CRITICAL: must commit+push .beads/ after merge, otherwise team sees stale state)
     │
     ▼
 10. Agent Mail: send_message(thread=epic_id, "PR ready for review")
@@ -306,10 +329,10 @@ PM clicks "Start" on Epic
 - Service wrappers: BeadsService, BvService, AgentManager, AgentMailClient, CmClient, CassService
 
 ### Phase 2: Capture + Triage + Epic Dashboard
-- Capture inbox sidebar (persistent, live, attributed)
-- Visual triage (drag → Epic with enrichment)
+- Capture page (`/captures`) with header CTA dialog (`Cmd+J`)
+- AI-powered 4-phase triage (analyze → scope → criteria → Beads breakdown)
 - Epic-first Kanban (dnd-kit, status columns, nested Beads)
-- br integration cho Epic/Bead CRUD
+- br integration for Epic/Bead CRUD
 
 ### Phase 3: Execution Engine
 - "Start" → scope gate → git branch → Agent Mail register → CM context → CASS search → spawn
@@ -362,6 +385,16 @@ cp .env.example .env
 
 # Start development
 pnpm dev    # Express :3000 + Vite :5173
+```
+
+### UI Demo (Standalone)
+
+The `ui/` directory contains a standalone UI demo that can be run independently without the backend:
+
+```bash
+cd ui
+pnpm install
+pnpm dev    # Vite dev server on :5174
 ```
 
 ### Verify
@@ -420,7 +453,7 @@ router.use(authenticate)
 router.post('/', requireRole('pm', 'techlead'), async (req, res) => {
   const parsed = createSchema.safeParse(req.body)
   if (!parsed.success) {
-    return res.status(400).json({ error: 'Dữ liệu không hợp lệ', details: parsed.error.issues })
+    return res.status(400).json({ error: 'Invalid data', details: parsed.error.issues })
   }
   // ... insert into DB ...
   emitToProject(projectId, 'resource:created', result)
