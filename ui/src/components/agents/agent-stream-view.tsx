@@ -1,30 +1,175 @@
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { ArrowDown } from 'lucide-react'
 import { StreamEvent } from './stream-event'
 import { streamEvents } from '@/data/agent-stream'
 import { sessions } from '@/data/sessions'
+import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
 
 interface AgentStreamViewProps {
   sessionId: string
 }
 
+/** How close to the bottom (in px) counts as "at the bottom" */
+const SCROLL_THRESHOLD = 80
+
 export function AgentStreamView({ sessionId }: AgentStreamViewProps) {
   const session = sessions.find((s) => s.id === sessionId)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const [isAtBottom, setIsAtBottom] = useState(true)
+  const [hasNewBelow, setHasNewBelow] = useState(false)
+  const prevEventCount = useRef(0)
+
+  const events = streamEvents
+  const isRunning = session?.status === 'running'
+  const isWaitingInput = session?.status === 'waiting_input'
+
+  // ── Check if scrolled to bottom ────────────────────────────────────────
+
+  const checkIfAtBottom = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return true
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    return distanceFromBottom < SCROLL_THRESHOLD
+  }, [])
+
+  const handleScroll = useCallback(() => {
+    const atBottom = checkIfAtBottom()
+    setIsAtBottom(atBottom)
+    if (atBottom) setHasNewBelow(false)
+  }, [checkIfAtBottom])
+
+  // ── Auto-scroll on new events (only if already at bottom) ──────────────
+
+  useEffect(() => {
+    if (events.length === prevEventCount.current) return
+    prevEventCount.current = events.length
+
+    if (isAtBottom) {
+      requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      })
+    } else {
+      setHasNewBelow(true)
+    }
+  }, [events.length, isAtBottom])
+
+  // ── Scroll to bottom on initial load or session change ─────────────────
+
+  useEffect(() => {
+    setIsAtBottom(true)
+    setHasNewBelow(false)
+    prevEventCount.current = 0
+    requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView()
+    })
+  }, [sessionId])
+
+  // ── Force scroll when question appears (waiting_input) ──────────────────
+
+  useEffect(() => {
+    if (isWaitingInput) {
+      requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      })
+    }
+  }, [isWaitingInput])
+
+  // ── Jump to bottom action ──────────────────────────────────────────────
+
+  const scrollToBottom = useCallback(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    setIsAtBottom(true)
+    setHasNewBelow(false)
+  }, [])
+
+  // Find the last AskUserQuestion event to attach inline answer UI
+  const lastAskEventId = events
+    .filter((e) => e.type === 'tool_use' && e.toolName === 'AskUserQuestion')
+    .at(-1)?.id
+
+  const handleAnswer = useCallback((_answer: string) => {
+    toast.success('Answer sent (demo)')
+  }, [])
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      <ScrollArea className="flex-1">
+    <div className="relative h-full overflow-hidden">
+      {/* Scrollable container */}
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="h-full overflow-y-auto scroll-smooth"
+      >
         <div className="flex flex-col gap-3 p-4">
-          {streamEvents.map((event) => (
-            <StreamEvent key={event.id} event={event} />
-          ))}
-          {session?.status === 'running' && (
+          {events.length === 0 && isRunning && (
+            <div className="flex items-center gap-2 pl-1 pt-4">
+              <span className="h-4 w-1.5 rounded-sm bg-accent animate-cursor" />
+              <span className="text-xs text-ink-muted">Waiting for agent output...</span>
+            </div>
+          )}
+
+          {events.length === 0 && !isRunning && session?.status !== 'idle' && (
+            <div className="flex items-center justify-center py-12">
+              <span className="text-sm text-ink-disabled">No events yet</span>
+            </div>
+          )}
+
+          {events.map((event) => {
+            const isAskEvent = event.type === 'tool_use' && event.toolName === 'AskUserQuestion'
+            const isLastAsk = isAskEvent && event.id === lastAskEventId
+            return (
+              <StreamEvent
+                key={event.id}
+                event={event}
+                question={isAskEvent ? (event.questionData ?? session?.question) : undefined}
+                isWaitingInput={isLastAsk && !!isWaitingInput}
+                onAnswer={isLastAsk && isWaitingInput ? handleAnswer : undefined}
+              />
+            )
+          })}
+
+          {isRunning && events.length > 0 && (
             <div className="flex items-center gap-1 pl-1 pt-1">
               <span className="h-4 w-1.5 rounded-sm bg-accent animate-cursor" />
               <span className="text-xs text-ink-muted">Agent is thinking...</span>
             </div>
           )}
+
+          {/* Scroll anchor */}
+          <div ref={bottomRef} className="h-px" />
         </div>
-      </ScrollArea>
+      </div>
+
+      {/* Scroll-to-bottom button */}
+      <div
+        className={cn(
+          'absolute bottom-4 left-1/2 -translate-x-1/2 transition-all duration-200',
+          !isAtBottom ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none',
+        )}
+      >
+        <button
+          type="button"
+          onClick={scrollToBottom}
+          className={cn(
+            'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium shadow-[var(--shadow-elevated)] transition-colors cursor-pointer',
+            hasNewBelow
+              ? 'border-accent/40 bg-accent text-surface-base hover:bg-accent-hover'
+              : 'border-edge bg-surface-overlay text-ink-secondary hover:bg-surface-elevated',
+          )}
+        >
+          <ArrowDown className="h-3 w-3" />
+          {hasNewBelow ? 'New messages' : 'Scroll to bottom'}
+        </button>
+      </div>
+
+      {/* Top fade gradient (when scrolled down) */}
+      <div
+        className={cn(
+          'pointer-events-none absolute top-0 left-0 right-0 h-6 bg-gradient-to-b from-surface-base to-transparent transition-opacity duration-200',
+          scrollRef.current && scrollRef.current.scrollTop > 20 ? 'opacity-100' : 'opacity-0',
+        )}
+      />
     </div>
   )
 }
