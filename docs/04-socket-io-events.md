@@ -194,6 +194,24 @@ TechLead has resolved the conflict, sync is working again.
 }
 ```
 
+#### `member:added`
+New member added to project.
+```typescript
+{
+  member: { user_id: string, name: string, email: string, role_override: string | null }
+  added_by: string
+}
+```
+
+#### `member:removed`
+Member removed from project.
+```typescript
+{
+  user_id: string
+  removed_by: string
+}
+```
+
 ---
 
 ### Session Room Events
@@ -269,7 +287,48 @@ Periodic progress summary (every 10 seconds while agent is running).
     files_modified: number // estimate from Edit/Write tool calls
     elapsed_ms: number
     last_tool: string      // most recent tool name
+    context_window: {
+      limit: number        // max tokens for the model
+      used: number         // input_tokens + cache_creation + cache_read
+      percent: number      // 0-100, derived from used/limit
+    }
   }
+}
+```
+
+#### `session:scope_gate`
+Emitted when scope analysis suggests the epic should be split before starting the agent session.
+
+```typescript
+{
+  session_id: string
+  epic_id: string
+  analysis: {
+    estimated_tokens: number
+    files_affected: number
+    complexity: 'low' | 'medium' | 'high'
+    recommendation: 'proceed' | 'split'
+    proposed_beads: Array<{ title: string; priority: number; description: string }>
+  }
+}
+```
+
+#### `session:validation_failed`
+Emitted when pre-push validation fails after agent completes work.
+
+```typescript
+{
+  session_id: string
+  epic_id: string
+  validation: {
+    passed: false
+    checks: Array<{
+      name: string           // 'tests' | 'build' | 'typecheck' | 'forbidden_patterns'
+      status: 'pass' | 'fail' | 'skip'
+      output: string | null
+    }>
+  }
+  actions: ['fix_retry', 'force_push', 'cancel']  // available user actions
 }
 ```
 

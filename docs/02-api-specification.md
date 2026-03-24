@@ -218,6 +218,78 @@ List branches for a single repo.
 
 ---
 
+## Project Members
+
+### GET /api/projects/:projectId/members
+List project members with their roles.
+
+```json
+// Response 200
+{
+  "members": [
+    { "user_id": "...", "name": "Trung", "email": "trung@...", "role": "techlead", "role_override": null, "created_at": 1711152000 }
+  ]
+}
+```
+
+### POST /api/projects/:projectId/members
+*Requires: PM or TechLead*
+
+Add a user to the project.
+
+```json
+// Request
+{ "user_id": "...", "role_override": "dev" }
+
+// Response 201
+{ "member": { "user_id": "...", "role_override": "dev", "created_at": 1711152000 } }
+```
+
+Side effect: emit `member:added` to project room.
+
+### PATCH /api/projects/:projectId/members/:userId
+*Requires: PM or TechLead*
+
+Update a member's project-level role override.
+
+```json
+// Request
+{ "role_override": "techlead" }
+
+// Response 200
+{ "member": { "user_id": "...", "role_override": "techlead" } }
+```
+
+### DELETE /api/projects/:projectId/members/:userId
+*Requires: PM or TechLead*
+
+Remove a member from the project.
+
+---
+
+## Agent Queue
+
+### GET /api/projects/:projectId/agent-queue
+List queued agent sessions for a project. Ordered by priority (ASC) then position (ASC).
+
+```json
+// Response 200
+{
+  "queue": [
+    { "id": "...", "epic_id": "...", "epic_title": "...", "user": { "id": "...", "name": "..." }, "priority": 1, "position": 1, "model": "sonnet", "status": "queued", "created_at": 1711152000 }
+  ]
+}
+```
+
+### DELETE /api/projects/:projectId/agent-queue/:queueId
+*Requires: PM or TechLead*
+
+Cancel a queued session.
+
+Side effect: emit `queue:updated` to project room.
+
+---
+
 ## Captures
 
 ### GET /api/projects/:projectId/captures
