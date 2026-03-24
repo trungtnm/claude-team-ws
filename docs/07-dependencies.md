@@ -98,17 +98,17 @@ packages:
 
 ### Server Dependencies Explained
 
-| Package | Purpose | Tại sao |
+| Package | Purpose | Why |
 |---------|---------|---------|
-| `express@5` | HTTP server + API routes | Mature, stable, Express 5 có async error handling |
+| `express@5` | HTTP server + API routes | Mature, stable, Express 5 has async error handling |
 | `socket.io` | WebSocket server | Bidirectional real-time (agent stream + user input) |
 | `drizzle-orm` + `better-sqlite3` | Database ORM | Type-safe queries, lightweight, no external DB service |
-| `jsonwebtoken` | JWT cho session cookies | Stateless auth tokens |
+| `jsonwebtoken` | JWT for session cookies | Stateless auth tokens |
 | `cookie-parser` | Parse session cookies | Express middleware |
-| `cors` | CORS headers | Vite dev server chạy port khác |
+| `cors` | CORS headers | Vite dev server runs on a different port |
 | `helmet` | Security headers | Production hardening |
 | `morgan` | HTTP request logging | Debug + audit |
-| `nanoid` | Generate short unique IDs | Cho captures, notifications |
+| `nanoid` | Generate short unique IDs | For captures, notifications |
 | `zod` | Request validation | Type-safe API input validation |
 | `date-fns` | Date utilities | Format timestamps |
 | `slug` | URL-safe slugify | Epic branch names |
@@ -181,16 +181,16 @@ packages:
 | **Core** | |
 | `react@19` + `react-dom` | UI framework |
 | `react-router-dom@7` | Client-side routing |
-| `socket.io-client` | WebSocket client (match server) |
+| `socket.io-client` | WebSocket client (matches server) |
 | `@tanstack/react-query` | Server state management + caching |
 | `zustand` | Local client state (UI state, selections) |
 | **Kanban** | |
-| `@dnd-kit/*` | Drag-and-drop cho Epic cards |
+| `@dnd-kit/*` | Drag-and-drop for Epic cards |
 | **Graph** | |
 | `@xyflow/react` | Interactive dependency DAG |
-| `@dagrejs/dagre` | Auto-layout algorithm cho DAG |
+| `@dagrejs/dagre` | Auto-layout algorithm for DAG |
 | **Review** | |
-| `react-diff-viewer-continued` | Git diff rendering trong PR review |
+| `react-diff-viewer-continued` | Git diff rendering in PR review |
 | **UI** | |
 | `@radix-ui/*` | Headless UI primitives (shadcn/ui base) |
 | `class-variance-authority` | Variant-based component styling |
@@ -228,20 +228,20 @@ packages:
 
 ## External CLI Dependencies (Host)
 
-Không qua npm. Phải cài sẵn trên host.
+Not via npm. Must be pre-installed on host.
 
 | Tool | Binary Path | Version Check |
 |------|------------|---------------|
 | `claude` | `~/.local/bin/claude` | `claude --version` |
-| `br` | `/opt/homebrew/bin/br` hoặc `~/.local/bin/br` | `br --version` |
-| `bv` | `/opt/homebrew/bin/bv` hoặc `~/.local/bin/bv` | `bv --version` |
+| `br` | `/opt/homebrew/bin/br` or `~/.local/bin/br` | `br --version` |
+| `bv` | `/opt/homebrew/bin/bv` or `~/.local/bin/bv` | `bv --version` |
 | `cass` | `~/.local/bin/cass` | `cass --version` |
 | `gh` | `/opt/homebrew/bin/gh` | `gh --version` |
 | `git` | `/usr/bin/git` | `git --version` |
 
 ### Health Check on Startup
 
-Server verify tất cả CLI tools có sẵn khi start:
+Server verifies all CLI tools are available on start:
 
 ```typescript
 async function verifyCliTools(): Promise<void> {

@@ -5,7 +5,7 @@
 ```
 Browser (socket.io-client)
     │
-    │ WebSocket (wss:// qua Cloudflare Tunnel)
+    │ WebSocket (wss:// via Cloudflare Tunnel)
     │
     ▼
 Express + Socket.IO Server (:3000)
@@ -26,10 +26,10 @@ Express + Socket.IO Server (:3000)
 
 ## Room Structure
 
-| Room | Pattern | Ai join | Purpose |
+| Room | Pattern | Who joins | Purpose |
 |------|---------|---------|---------|
-| `project:<projectId>` | Tất cả users mở project | Board updates, epic changes, session lifecycle |
-| `session:<sessionId>` | Users đang xem agent stream | Real-time agent output, AskUserQuestion |
+| `project:<projectId>` | All users who open the project | Board updates, epic changes, session lifecycle |
+| `session:<sessionId>` | Users viewing the agent stream | Real-time agent output, AskUserQuestion |
 | `user:<userId>` | Authenticated user | Personal notifications |
 
 ---
@@ -39,7 +39,7 @@ Express + Socket.IO Server (:3000)
 ### Project Room Events
 
 #### `capture:created`
-Khi ai đó tạo capture mới.
+When someone creates a new capture.
 ```typescript
 {
   capture: {
@@ -53,7 +53,7 @@ Khi ai đó tạo capture mới.
 ```
 
 #### `repo:added`
-Repo mới được thêm vào project.
+A new repo has been added to the project.
 ```typescript
 {
   repo: {
@@ -69,7 +69,7 @@ Repo mới được thêm vào project.
 ```
 
 #### `repo:removed`
-Repo bị xóa khỏi project.
+A repo has been removed from the project.
 ```typescript
 {
   repo_name: string
@@ -78,7 +78,7 @@ Repo bị xóa khỏi project.
 ```
 
 #### `repo:clone_progress`
-Progress khi đang clone repo lớn.
+Progress while cloning a large repo.
 ```typescript
 {
   repo_name: string
@@ -89,13 +89,13 @@ Progress khi đang clone repo lớn.
 ```
 
 #### `epic:created`
-Epic mới được tạo (từ triage hoặc manual).
+A new Epic has been created (from triage or manually).
 ```typescript
 {
   epic: {
     id: string
     bead_epic_id: string
-    ui_status: 'draft'
+    ui_status: 'blocked'
     bead: { title: string, priority: number, type: string }
     created_by: { id: string, name: string }
   }
@@ -103,7 +103,7 @@ Epic mới được tạo (từ triage hoặc manual).
 ```
 
 #### `epic:updated`
-Epic status change (bất kỳ field nào thay đổi).
+Epic status change (any field changed).
 ```typescript
 {
   epic: {
@@ -113,7 +113,7 @@ Epic status change (bất kỳ field nào thay đổi).
     prev_status: string    // previous status
     bead: { ... }          // latest from br show
   }
-  trigger: 'user' | 'agent' | 'system'  // ai gây ra thay đổi
+  trigger: 'user' | 'agent' | 'system'  // who caused the change
 }
 ```
 
@@ -174,20 +174,20 @@ Beads DB changed (detected via fs.watchFile). Client should refetch.
 ```
 
 #### `beads:sync_conflict`
-Beads git sync failed — cần TechLead resolve thủ công trên host.
+Beads git sync failed — TechLead needs to resolve manually on host.
 ```typescript
 {
   error: string
   details: string
   action_required: 'TechLead needs to resolve manually on host'
-  host_command: string    // lệnh gợi ý cho TechLead chạy trên host
+  host_command: string    // suggested command for TechLead to run on host
   timestamp: number
 }
 ```
-**UI behavior:** Hiện persistent red banner trên toàn project (tương tự Agent Alert Bar). Banner chỉ dismiss khi nhận `beads:sync_resolved`.
+**UI behavior:** Show a persistent red banner across the entire project (similar to Agent Alert Bar). The banner is only dismissed when `beads:sync_resolved` is received.
 
 #### `beads:sync_resolved`
-TechLead đã resolve conflict, sync hoạt động lại.
+TechLead has resolved the conflict, sync is working again.
 ```typescript
 {
   timestamp: number
@@ -199,39 +199,39 @@ TechLead đã resolve conflict, sync hoạt động lại.
 ### Session Room Events
 
 #### `session:event`
-Mỗi dòng NDJSON từ claude `--output-format=stream-json`.
+Each NDJSON line from claude `--output-format=stream-json`.
 
 ```typescript
 {
   session_id: string
-  event_id: number        // session_events.id (cho replay)
+  event_id: number        // session_events.id (for replay)
   event_type: 'system' | 'assistant' | 'tool_use' | 'tool_result' | 'result' | 'error'
-  data: object             // Raw JSON từ claude stream
+  data: object             // Raw JSON from claude stream
   timestamp: number
 }
 ```
 
 **`event_type` details:**
 
-| Type | Khi nào | Data chứa gì |
+| Type | When | Data contains |
 |------|---------|---------------|
 | `system` | Agent init | `{ type: "system", subtype: "init", session_id: "..." }` |
-| `assistant` | Agent viết text | `{ type: "assistant", message: { content: [{ type: "text", text: "..." }] } }` |
-| `tool_use` | Agent gọi tool | `{ type: "tool_use", tool: { name: "Edit", input: {...} } }` |
-| `tool_result` | Tool trả kết quả | `{ type: "tool_result", result: "..." }` |
+| `assistant` | Agent writes text | `{ type: "assistant", message: { content: [{ type: "text", text: "..." }] } }` |
+| `tool_use` | Agent calls a tool | `{ type: "tool_use", tool: { name: "Edit", input: {...} } }` |
+| `tool_result` | Tool returns result | `{ type: "tool_result", result: "..." }` |
 | `result` | Agent done | `{ type: "result", cost_usd: 0.15, duration_ms: 45000, ... }` |
-| `error` | Lỗi | `{ type: "error", message: "..." }` |
+| `error` | Error | `{ type: "error", message: "..." }` |
 
 #### `session:question`
-AskUserQuestion triggered — agent đang chờ human input.
+AskUserQuestion triggered — agent is waiting for human input.
 
 ```typescript
 {
   session_id: string
   question: {
-    id: string            // question ID cho reply
-    text: string          // câu hỏi
-    options: Array<{      // multiple choice (nếu có)
+    id: string            // question ID for reply
+    text: string          // the question
+    options: Array<{      // multiple choice (if any)
       label: string
       description: string
     }> | null
@@ -239,13 +239,13 @@ AskUserQuestion triggered — agent đang chờ human input.
   }
   mode: 'pause' | 'auto' | 'hybrid'  // current mode
   risk_level: 'low' | 'high'         // assessed risk (for hybrid mode)
-  auto_answer: string | null          // nếu mode=auto, đây là answer agent sẽ dùng
-  timeout_seconds: number | null      // auto-accept sau N giây (for hybrid LOW risk)
+  auto_answer: string | null          // if mode=auto, this is the answer the agent will use
+  timeout_seconds: number | null      // auto-accept after N seconds (for hybrid LOW risk)
 }
 ```
 
 #### `session:question:answered`
-Question đã được trả lời (bởi human hoặc auto).
+Question has been answered (by human or auto).
 
 ```typescript
 {
@@ -253,22 +253,22 @@ Question đã được trả lời (bởi human hoặc auto).
   question_id: string
   answer: string
   answered_by: 'human' | 'auto' | 'timeout'
-  user: { name: string } | null  // null nếu auto/timeout
+  user: { name: string } | null  // null if auto/timeout
 }
 ```
 
 #### `session:progress`
-Periodic progress summary (mỗi 10 giây khi agent đang chạy).
+Periodic progress summary (every 10 seconds while agent is running).
 
 ```typescript
 {
   session_id: string
   progress: {
-    turns: number          // số turns hoàn thành
-    tools_used: number     // số tool calls
-    files_modified: number // estimate từ Edit/Write tool calls
+    turns: number          // number of completed turns
+    tools_used: number     // number of tool calls
+    files_modified: number // estimate from Edit/Write tool calls
     elapsed_ms: number
-    last_tool: string      // tên tool gần nhất
+    last_tool: string      // most recent tool name
   }
 }
 ```
@@ -287,7 +287,7 @@ Personal notification.
     type: 'agent_complete' | 'pr_ready' | 'review_needed' | 'question_waiting' | 'merge_complete'
     title: string
     body: string | null
-    link: string | null    // deep link trong UI
+    link: string | null    // deep link in UI
     project_id: string
   }
 }
@@ -298,7 +298,7 @@ Personal notification.
 ## Client → Server Events
 
 ### `join:project`
-Join project room để nhận board updates.
+Join project room to receive board updates.
 ```typescript
 // Client emit
 socket.emit('join:project', { projectId: '...' })
@@ -310,7 +310,7 @@ socket.emit('join:project', { projectId: '...' })
 ```
 
 ### `join:session`
-Join session room để nhận agent stream.
+Join session room to receive agent stream.
 ```typescript
 socket.emit('join:session', { sessionId: '...' })
 
@@ -327,7 +327,7 @@ socket.emit('leave:session', { sessionId: '...' })
 ```
 
 ### `session:answer`
-Trả lời AskUserQuestion.
+Answer an AskUserQuestion.
 ```typescript
 socket.emit('session:answer', {
   sessionId: '...',
@@ -353,11 +353,11 @@ socket.emit('session:cancel', { sessionId: '...' })
 ```
 
 ### `capture:create`
-Quick-create capture từ UI (thay vì HTTP POST).
+Quick-create capture from UI (instead of HTTP POST).
 ```typescript
 socket.emit('capture:create', {
   projectId: '...',
-  text: 'Cần thêm rate limiting'
+  text: 'Need to add rate limiting'
 })
 
 // Server handler
@@ -377,7 +377,7 @@ import { io } from 'socket.io-client'
 
 const socket = io('/', {
   auth: {
-    token: apiKey  // hoặc JWT từ session cookie
+    token: apiKey  // or JWT from session cookie
   },
   reconnection: true,
   reconnectionAttempts: 10,
@@ -420,7 +420,7 @@ io.use((socket, next) => {
 
 ### Reconnection & Catch-up
 
-Khi client reconnect sau disconnect:
+When the client reconnects after a disconnect:
 1. Auto-rejoin rooms (client maintains list of joined rooms)
-2. `join:session` emits last 50 events → client append vào existing stream
-3. `join:project` emits current board state → client reconcile
+2. `join:session` emits last 50 events → client appends to existing stream
+3. `join:project` emits current board state → client reconciles

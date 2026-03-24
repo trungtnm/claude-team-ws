@@ -8,18 +8,18 @@ http://localhost:3000/api
 
 ## Authentication
 
-Mọi routes (trừ `/api/auth/login`) require header:
+All routes (except `/api/auth/login`) require header:
 ```
 Authorization: Bearer <api_key>
 ```
-hoặc session cookie (set sau login).
+or session cookie (set after login).
 
 ---
 
 ## Auth
 
 ### POST /api/auth/login
-Login bằng API key, trả về session cookie.
+Login with API key, returns session cookie.
 
 ```json
 // Request
@@ -41,7 +41,7 @@ Clear session cookie.
 ## Projects
 
 ### GET /api/projects
-List projects user có access.
+List projects the user has access to.
 
 ```json
 // Response 200
@@ -51,7 +51,7 @@ List projects user có access.
 ### POST /api/projects
 *Requires: PM or TechLead*
 
-Tạo project mới. Server auto-init umbrella repo + `.beads/` nếu chưa có.
+Create a new project. Server auto-initializes umbrella repo + `.beads/` if not already present.
 
 ```json
 // Request
@@ -71,10 +71,10 @@ Tạo project mới. Server auto-init umbrella repo + `.beads/` nếu chưa có.
 ```
 
 **Server-side flow:**
-1. Tạo directory: `/data/projects/myapp/`
+1. Create directory: `/data/projects/myapp/`
 2. `git init` (umbrella repo)
-3. Tạo `.gitignore` (ignore beads.db, .ccu/, data/)
-4. `br init` → tạo `.beads/`
+3. Create `.gitignore` (ignore beads.db, .ccu/, data/)
+4. `br init` → creates `.beads/`
 5. `mkdir repos/`
 6. Initial commit: `git add . && git commit -m "Init project"`
 7. Insert into `projects` table
@@ -90,7 +90,7 @@ Update settings (max_concurrent_agents, ask_question_mode).
 ## Repos Management
 
 ### GET /api/projects/:projectId/repos
-List repos trong project.
+List repos in the project.
 
 ```json
 // Response 200
@@ -112,9 +112,9 @@ List repos trong project.
 ### POST /api/projects/:projectId/repos
 *Requires: PM or TechLead*
 
-Thêm repo vào project. Hỗ trợ 2 modes: clone từ URL hoặc link repo đã có sẵn trên host.
+Add a repo to the project. Supports 2 modes: clone from URL or link an existing repo on the host.
 
-**Mode 1: Clone từ URL**
+**Mode 1: Clone from URL**
 
 ```json
 // Request
@@ -138,16 +138,16 @@ Thêm repo vào project. Hỗ trợ 2 modes: clone từ URL hoặc link repo đ�
 ```
 
 **Server-side flow:**
-1. Validate: `repos/backend/` chưa tồn tại
+1. Validate: `repos/backend/` does not already exist
 2. `git clone <git_url> repos/backend/`
 3. Verify: `git -C repos/backend/ rev-parse --is-inside-work-tree`
-4. Detect default branch nếu không chỉ định: `git -C repos/backend/ remote show origin | grep 'HEAD branch'`
+4. Detect default branch if not specified: `git -C repos/backend/ remote show origin | grep 'HEAD branch'`
 5. Update project record: append to `repos` JSON array
 6. Socket.IO emit `repo:added` to project room
 
-**Mode 2: Link repo đã clone sẵn trên host**
+**Mode 2: Link an already-cloned repo on the host**
 
-Nếu repo đã nằm sẵn ở đâu đó trên Mac Mini, copy/symlink vào `repos/`.
+If the repo already exists somewhere on the Mac Mini, copy/symlink it into `repos/`.
 
 ```json
 // Request
@@ -162,23 +162,23 @@ Nếu repo đã nằm sẵn ở đâu đó trên Mac Mini, copy/symlink vào `re
 ```
 
 **Server-side flow:**
-1. Validate: `source_path` là git repo (`git rev-parse --is-inside-work-tree`)
-2. Validate: `source_path` không nằm trong project root (tránh circular)
+1. Validate: `source_path` is a git repo (`git rev-parse --is-inside-work-tree`)
+2. Validate: `source_path` is not inside the project root (to avoid circular references)
 3. Symlink: `ln -s /Users/dev/existing-backend-repo repos/backend`
-   — hoặc `cp -r` nếu cần isolated copy (configurable)
+   — or `cp -r` if an isolated copy is needed (configurable)
 4. Verify remote: `git -C repos/backend/ remote -v`
 5. Update project record
 
 **Error cases:**
-- Git URL invalid hoặc auth fail → 400 + error message
+- Git URL invalid or auth failure → 400 + error message
 - Directory already exists → 409 Conflict
-- Source path không phải git repo → 400
+- Source path is not a git repo → 400
 - Disk space insufficient → 507
 
 ### DELETE /api/projects/:projectId/repos/:repoName
 *Requires: PM or TechLead*
 
-Xóa repo khỏi project.
+Remove a repo from the project.
 
 ```json
 // Request (confirmation required)
@@ -186,17 +186,17 @@ Xóa repo khỏi project.
 ```
 
 **Server-side flow:**
-1. Check: không có Epic nào đang `in_progress` target repo này
-2. Check: không có active agent session trên repo
-3. Nếu symlink → chỉ remove symlink (`unlink repos/backend`)
-4. Nếu cloned → remove directory (`rm -rf repos/backend`)
+1. Check: no Epic is currently `in_progress` targeting this repo
+2. Check: no active agent session on the repo
+3. If symlink → only remove the symlink (`unlink repos/backend`)
+4. If cloned → remove the directory (`rm -rf repos/backend`)
 5. Update project record: remove from `repos` JSON array
 6. Socket.IO emit `repo:removed`
 
 ### POST /api/projects/:projectId/repos/:repoName/pull
 *Requires: PM, Dev, or TechLead*
 
-Manual pull latest cho 1 repo.
+Manually pull the latest changes for a single repo.
 
 ```json
 // Response 200
@@ -204,7 +204,7 @@ Manual pull latest cho 1 repo.
 ```
 
 ### GET /api/projects/:projectId/repos/:repoName/branches
-List branches cho 1 repo.
+List branches for a single repo.
 
 ```json
 // Response 200
@@ -228,7 +228,7 @@ List captures. Query params: `status=pending|triaged|deferred`, `limit`, `offset
 
 ```json
 // Request
-{ "text": "Cần thêm rate limiting cho API endpoints" }
+{ "text": "Need to add rate limiting for API endpoints" }
 
 // Response 201
 { "capture": { "id": "...", "text": "...", "status": "pending", "user": { "name": "Trung" }, "created_at": 1711152000 } }
@@ -236,13 +236,13 @@ List captures. Query params: `status=pending|triaged|deferred`, `limit`, `offset
 **Side effect**: Socket.IO emit `capture:created` to project room.
 
 ### PATCH /api/projects/:projectId/captures/:captureId
-Update status (triage). *Requires: PM or TechLead*
+Update capture status (triage). *Requires: PM or TechLead*
 
 ```json
 // Request (triage → epic)
 { "status": "triaged", "triage_result": { "type": "epic", "title": "Rate Limiting", "description": "...", "priority": 1 } }
 ```
-**Side effect**: Nếu `type=epic` → auto-create Epic via `br create --type epic`.
+**Side effect**: If `type=epic` → auto-create Epic via `br create --type epic`.
 
 ### DELETE /api/projects/:projectId/captures/:captureId
 Dismiss capture. *Requires: PM or TechLead*
@@ -254,7 +254,7 @@ Dismiss capture. *Requires: PM or TechLead*
 ### GET /api/projects/:projectId/epics
 List epics. Query params: `ui_status`, `limit`, `offset`.
 
-Mỗi epic trả về merged data từ app DB + `br show <bead_epic_id> --json`:
+Each epic returns merged data from the app DB + `br show <bead_epic_id> --json`:
 ```json
 {
   "epics": [{
@@ -292,12 +292,12 @@ Epic detail + nested beads + sessions history + PR status.
 3. Socket.IO emit `epic:created`
 
 ### PATCH /api/projects/:projectId/epics/:epicId
-Update Epic. Proxy updates tới `br update` + app DB.
+Update Epic. Proxies updates to `br update` + app DB.
 
 ### POST /api/projects/:projectId/epics/:epicId/analyze-scope
 *Requires: PM or TechLead*
 
-Auto-detect scope → trả về split proposal.
+Auto-detect scope and return a split proposal.
 
 ```json
 // Response 200
@@ -319,15 +319,15 @@ Auto-detect scope → trả về split proposal.
 ### POST /api/projects/:projectId/epics/:epicId/confirm-split
 *Requires: PM or TechLead*
 
-PM confirm/edit split proposal → tạo Beads.
+PM confirms/edits the split proposal and creates Beads.
 
 ```json
 // Request
 { "beads": [{ "title": "...", "priority": 1, "description": "..." }, ...] }
 ```
 **Side effects**:
-1. `br create` cho mỗi bead, link dependency tới epic
-2. `br dep add <bead-id> <epic-id>` cho mỗi bead
+1. `br create` for each bead, link dependency to epic
+2. `br dep add <bead-id> <epic-id>` for each bead
 
 ---
 
@@ -345,8 +345,8 @@ List sessions. Query params: `status`, `epic_id`, `limit`, `offset`.
 ```
 
 **Server-side flow (12 steps)**:
-1. Check concurrency limit → queue nếu full
-2. Scope gate (nếu chưa analyzed)
+1. Check concurrency limit → queue if full
+2. Scope gate (if not yet analyzed)
 3. `git checkout -b epic/<slug>` in target repo(s)
 4. Agent Mail: `register_agent(...)`
 5. CM: `cm_context(...)` → rules
@@ -359,7 +359,7 @@ List sessions. Query params: `status`, `epic_id`, `limit`, `offset`.
 ```json
 // Response 201
 { "session": { "id": "...", "status": "running", "agent_mail_name": "BlueLake" } }
-// hoặc
+// or
 { "session": { "id": "...", "status": "queued", "queue_position": 2 } }
 ```
 
@@ -380,7 +380,7 @@ Resume a completed/failed session.
 ```
 
 ### POST /api/sessions/:sessionId/answer
-Trả lời AskUserQuestion (khi mode=pause).
+Answer an AskUserQuestion (when mode=pause).
 
 ```json
 // Request
@@ -456,7 +456,7 @@ PR review detail: diff + AI review comments.
 ## Graph & Analytics
 
 ### GET /api/projects/:projectId/graph
-Dependency graph data cho React Flow.
+Dependency graph data for React Flow.
 
 ```json
 // Response 200
@@ -505,10 +505,10 @@ Update confidence, maturity, approve auto-generated rule.
 ## Agent Mail (Proxy)
 
 ### GET /api/projects/:projectId/mail/threads
-List message threads cho project. Proxy to Agent Mail `search_messages`.
+List message threads for the project. Proxies to Agent Mail `search_messages`.
 
 ### GET /api/projects/:projectId/mail/threads/:threadId
-Thread detail (messages in thread). Proxy to Agent Mail `summarize_thread`.
+Thread detail (messages in thread). Proxies to Agent Mail `summarize_thread`.
 
 ---
 
@@ -525,7 +525,7 @@ Current sync status.
   "pending_changes": false,
   "error": null
 }
-// hoặc khi conflict:
+// or when there is a conflict:
 {
   "status": "conflict",
   "last_synced_at": 1711148000,
@@ -538,20 +538,20 @@ Current sync status.
 ### POST /api/projects/:projectId/beads-sync/resume
 *Requires: TechLead*
 
-Resume sync sau khi TechLead resolve conflict thủ công trên host.
+Resume sync after the TechLead has manually resolved the conflict on the host.
 
 ```json
 // Response 200
 { "status": "ok", "message": "Sync resumed" }
 
-// Response 409 (repo vẫn có conflict)
+// Response 409 (repo still has conflicts)
 { "error": "Repo still has unresolved conflicts. Run: git status" }
 ```
 
 ### POST /api/projects/:projectId/beads-sync/force
 *Requires: TechLead*
 
-Force sync — export beads DB hiện tại và overwrite remote.
+Force sync — export the current beads DB and overwrite remote.
 
 ```json
 // Request (confirmation required)
@@ -593,13 +593,13 @@ Mark as read.
 
 ### Server → Client
 
-| Event | Room | Payload | Khi nào |
-|-------|------|---------|---------|
-| `capture:created` | `project:<id>` | Capture object | Ai đó tạo capture |
-| `epic:created` | `project:<id>` | Epic object | Epic mới |
+| Event | Room | Payload | When |
+|-------|------|---------|------|
+| `capture:created` | `project:<id>` | Capture object | Someone creates a capture |
+| `epic:created` | `project:<id>` | Epic object | New epic created |
 | `epic:updated` | `project:<id>` | Epic object | Status change |
 | `session:started` | `project:<id>` | Session summary | Agent spawn |
-| `session:event` | `session:<id>` | NDJSON line | Mỗi dòng output từ claude |
+| `session:event` | `session:<id>` | NDJSON line | Each output line from claude |
 | `session:question` | `session:<id>` | Question object | AskUserQuestion triggered |
 | `session:completed` | `session:<id>` + `project:<id>` | Session result | Agent done |
 | `session:failed` | `session:<id>` + `project:<id>` | Error details | Agent crashed |

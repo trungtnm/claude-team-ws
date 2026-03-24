@@ -2,7 +2,7 @@
 
 ## Overview
 
-Agent lifecycle quản lý toàn bộ vòng đời của một Claude Code session, từ lúc PM click "Start" đến khi PR được merge.
+Agent lifecycle manages the entire lifecycle of a Claude Code session, from when the PM clicks "Start" to when the PR is merged.
 
 ```
 Trigger → Scope Gate → Git Branch → Context Build → Spawn → Stream → Complete → PR → Review → Merge
@@ -12,7 +12,7 @@ Trigger → Scope Gate → Git Branch → Context Build → Spawn → Stream →
 
 ## Crash Recovery (Server Restart)
 
-Khi Express server crash hoặc restart (PM2 auto-restart, deploy update), các claude CLI processes đang chạy vẫn sống (orphaned processes). Server cần re-attach.
+When the Express server crashes or restarts (PM2 auto-restart, deploy update), running claude CLI processes remain alive (orphaned processes). The server needs to re-attach.
 
 ### On Startup: Recovery Sequence
 
@@ -134,8 +134,8 @@ async function handleDetachedSessionExit(sessionId: string): Promise<void> {
   await agentQueue.processQueue(session.project_id)
 }
 
-// Vì KHÔNG dùng --bare, claude ghi session log vào ~/.claude/projects/<hash>/sessions/
-// Session ID đã biết → đọc log file để recover events bị miss
+// Since we do NOT use --bare, claude writes session logs to ~/.claude/projects/<hash>/sessions/
+// Session ID is known → read log file to recover missed events
 async function recoverEventsFromSessionLog(session: Session): Promise<any[]> {
   if (!session.claude_session_id) return []
 
@@ -181,27 +181,27 @@ async function recoverEventsFromSessionLog(session: Session): Promise<any[]> {
 
 | Limitation | Impact | Mitigation |
 |---|---|---|
-| **Cannot re-attach stdout pipe** | Mất real-time streaming sau server restart | Recover từ session log file (xem bên dưới) |
-| **PID polling mỗi 5s** | Không real-time — agent có thể xong ở giây 1, server biết ở giây 5 | Chấp nhận được — 5s delay cho crash recovery không phải vấn đề |
-| **Session log có thể incomplete** | Nếu claude crash giữa chừng, log file cũng corrupt | Fallback: check git branch commits |
+| **Cannot re-attach stdout pipe** | Lose real-time streaming after server restart | Recover from session log file (see below) |
+| **PID polling every 5s** | Not real-time — agent may finish at second 1, server detects at second 5 | Acceptable — 5s delay for crash recovery is not an issue |
+| **Session log may be incomplete** | If claude crashes mid-session, log file may also be corrupt | Fallback: check git branch commits |
 
-**Recovery priority chain** (thử từ trên xuống):
+**Recovery priority chain** (try from top to bottom):
 
 ```
 1. Session log file (~/.claude/.../sessions/<id>.jsonl)
-   → Nguồn tốt nhất: có đầy đủ events kể cả result
-   → Vì không dùng --bare, claude GHI session log
+   → Best source: contains all events including result
+   → Since we don't use --bare, claude WRITES session logs
 
 2. Git branch state
    → Fallback: check branchHasNewCommits()
-   → Biết agent có làm gì không, nhưng mất chi tiết
+   → Tells whether the agent did anything, but loses detail
 
 3. Mark as failed
-   → Last resort: không có evidence agent đã làm gì
-   → User có thể resume session thủ công
+   → Last resort: no evidence of what the agent did
+   → User can resume the session manually
 ```
 
-**UI behavior cho detached sessions:**
+**UI behavior for detached sessions:**
 
 ```
 ┌────────────────────────────────────────────────────────────┐
@@ -227,7 +227,7 @@ async function recoverEventsFromSessionLog(session: Session): Promise<any[]> {
 └────────────────────────────────────────────────────────────┘
 ```
 
-Khi PID exit detected → recovered events được supplement, status update, postCompletion trigger. UI chuyển sang trạng thái bình thường.
+When PID exit is detected → recovered events are supplemented, status updated, postCompletion triggered. UI transitions to normal state.
 
 ---
 
@@ -243,7 +243,7 @@ POST /api/projects/:projectId/sessions
 ### Server-side validation:
 
 1. **Permission check**: User must be PM, Dev, or TechLead
-2. **Epic status check**: ui_status must be `ready` or `draft` (not already `in_progress`)
+2. **Epic status check**: ui_status must be `ready` (not `blocked` or already `in_progress`)
 3. **Concurrency check**: Count running sessions for project
    - If `running_count >= max_concurrent_agents` → add to queue
    - Return `{ status: "queued", position: N }`
@@ -252,7 +252,7 @@ POST /api/projects/:projectId/sessions
 
 ## Phase 2: Scope Gate
 
-Nếu Epic chưa được analyze:
+If the Epic has not been analyzed yet:
 
 ```typescript
 async function analyzeScope(epic: Epic): Promise<ScopeAnalysis> {
@@ -279,13 +279,13 @@ async function analyzeScope(epic: Epic): Promise<ScopeAnalysis> {
 }
 ```
 
-**Nếu `recommendation = 'split'`:**
-- Emit `session:scope_gate` via Socket.IO → UI hiện split proposal dialog
-- PM review/edit → confirm → server tạo child beads via `br create`
-- Sau đó tiếp tục spawn
+**If `recommendation = 'split'`:**
+- Emit `session:scope_gate` via Socket.IO → UI shows split proposal dialog
+- PM review/edit → confirm → server creates child beads via `br create`
+- Then continue to spawn
 
-**Nếu `recommendation = 'proceed'`:**
-- Tiếp tục spawn ngay
+**If `recommendation = 'proceed'`:**
+- Continue to spawn immediately
 
 ---
 
@@ -294,13 +294,13 @@ async function analyzeScope(epic: Epic): Promise<ScopeAnalysis> {
 ```typescript
 async function createEpicBranch(epic: Epic, repos: Repo[]): Promise<string[]> {
   const branches: string[] = []
-  const slug = slugify(epic.title) // vd: "rate-limiting"
+  const slug = slugify(epic.title) // e.g.: "rate-limiting"
 
   for (const repo of epic.targetRepos) {
     const branchName = `epic/${slug}`
 
-    // CRITICAL: Pull latest main trước khi tạo branch
-    // Tránh base trên code cũ → merge conflicts khi tạo PR
+    // CRITICAL: Pull latest main before creating branch
+    // Avoid basing on stale code → merge conflicts when creating PR
     await gitService.run(repo.path, ['checkout', repo.default_branch])
     await gitService.run(repo.path, ['pull', 'origin', repo.default_branch])
 
@@ -323,7 +323,7 @@ async function createEpicBranch(epic: Epic, repos: Repo[]): Promise<string[]> {
 }
 ```
 
-**Cleanup on failure:** Nếu spawn fail, delete branch:
+**Cleanup on failure:** If spawn fails, delete branch:
 ```bash
 git checkout main && git branch -D epic/<slug>
 ```
@@ -332,7 +332,7 @@ git checkout main && git branch -D epic/<slug>
 
 ## Phase 4: Context Building
 
-Thu thập context từ **6 nguồn** trước khi spawn agent. Agent sẽ tự explore thêm bằng Read/Glob/Grep khi chạy, nhưng initial context tốt = ít turns lãng phí = nhanh hơn + rẻ hơn.
+Gather context from **6 sources** before spawning the agent. The agent will explore further using Read/Glob/Grep during execution, but good initial context = fewer wasted turns = faster + cheaper.
 
 ### 6 Context Sources
 
@@ -360,11 +360,11 @@ async function buildAgentContext(epic: Epic, project: Project): Promise<string> 
   const epicSection = buildEpicSection(epicBead, childBeads)
 
   // ── 2. Codebase snapshot (from filesystem) ─────────────
-  // Cho agent hiểu structure TRƯỚC khi nó tự explore
+  // Help agent understand structure BEFORE it explores on its own
   const codebaseSection = await buildCodebaseSnapshot(targetRepos, epicBead)
 
   // ── 3. Dependency graph (from bv) ──────────────────────
-  // Agent biết beads nào phải xong trước, beads nào block sau
+  // Agent knows which beads must be completed first, which ones are blocked downstream
   const graphSection = await buildGraphContext(epic.bead_epic_id)
 
   // ── 4. CM rules (from CM server) ───────────────────────
@@ -406,7 +406,7 @@ Complete these beads in dependency order. Close each bead when done:
 
 ### Source 2: Codebase Snapshot (NEW)
 
-**Tại sao cần:** Agent sẽ tự Read/Glob khi chạy, nhưng mỗi tool call tốn 1 turn. Inject sẵn file tree + key files giúp agent hiểu codebase trong turn 1 thay vì turn 5.
+**Why this is needed:** The agent will Read/Glob on its own during execution, but each tool call costs 1 turn. Pre-injecting the file tree + key files helps the agent understand the codebase on turn 1 instead of turn 5.
 
 ```typescript
 async function buildCodebaseSnapshot(
@@ -484,12 +484,12 @@ ${relevantFiles.length > 0 ? `### Files Referenced in Epic\n${relevantFiles.join
 }
 ```
 
-**Token budget:** Codebase snapshot có thể lớn. Limit:
+**Token budget:** Codebase snapshot can be large. Limits:
 - File tree: max 3000 chars (~100 lines)
-- Config files: max 500 chars mỗi file
+- Config files: max 500 chars per file
 - Relevant files: max 5 files × 50 lines
 - CLAUDE.md: max 2000 chars
-- **Tổng: ~8K-15K tokens** — đáng để tiết kiệm 5-10 turns exploring
+- **Total: ~8K-15K tokens** — worth it to save 5-10 turns of exploring
 
 ### Source 3: Dependency Graph (NEW)
 
@@ -562,7 +562,7 @@ async function buildCassContext(epicBead: any): Promise<string> {
 
 ### Source 6: Execution Guardrails (NEW)
 
-**Tại sao hardcode trong prompt:** Claude Code CÓ thể chạy tests — nhưng không có gì ENFORCE nó phải chạy. Agent có thể code xong, commit, và push mà không test. Guardrails trong prompt = soft enforcement.
+**Why hardcode in the prompt:** Claude Code CAN run tests — but nothing ENFORCES that it must. The agent could finish coding, commit, and push without testing. Guardrails in the prompt = soft enforcement.
 
 ```typescript
 function buildGuardrails(targetRepos: Array<{ repo: string }>): string {
@@ -603,7 +603,7 @@ ${isMultiRepo ? `
 }
 ```
 
-**Lưu ý cuối cùng về guardrails:** Đây là soft enforcement qua prompt. Agent CÓ THỂ ignore. Hard enforcement nằm ở Phase 9 (post-completion validation) — xem bên dưới.
+**Final note on guardrails:** This is soft enforcement via prompt. The agent CAN ignore it. Hard enforcement is in Phase 9 (post-completion validation) — see below.
 
 ---
 
@@ -614,11 +614,11 @@ async function spawnAgent(session: Session, prompt: string): Promise<void> {
   const claudeSessionId = crypto.randomUUID()
 
   // Build CLI args
-  // NOTE: KHÔNG dùng --bare. Lý do:
-  // --bare skip session persistence → ~/.claude/ không ghi session log
-  // → cass index không tìm thấy session → Shared Memory (CASS) bị vô hiệu hóa
-  // Trade-off: không có --bare, claude sẽ load hooks + LSP + plugin sync
-  // → chậm hơn ~2-3s khi khởi động, nhưng giữ được CASS integration
+  // NOTE: Do NOT use --bare. Reason:
+  // --bare skips session persistence → ~/.claude/ does not write session log
+  // → cass index cannot find the session → Shared Memory (CASS) is disabled
+  // Trade-off: without --bare, claude loads hooks + LSP + plugin sync
+  // → ~2-3s slower on startup, but preserves CASS integration
   const args = [
     '-p',                                    // Print mode (non-interactive)
     '--output-format=stream-json',           // NDJSON streaming
@@ -888,7 +888,7 @@ async function handleAgentExit(
 
 ## Phase 9: Pre-Push Validation (Hard Enforcement)
 
-Guardrails trong prompt là soft enforcement — agent có thể ignore. Phase 9 chạy validation trên server-side TRƯỚC khi push branch và tạo PR. Nếu fail → KHÔNG push, KHÔNG tạo PR.
+Guardrails in the prompt are soft enforcement — the agent can ignore them. Phase 9 runs validation server-side BEFORE pushing the branch and creating a PR. If it fails → NO push, NO PR creation.
 
 ```typescript
 interface ValidationResult {
@@ -1007,7 +1007,7 @@ async function detectTestCommand(repoPath: string): Promise<string | null> {
 }
 ```
 
-### Validation Fail → Chọn action
+### Validation Fail → Choose action
 
 ```typescript
 async function handlePostCompletion(session: Session): Promise<void> {
@@ -1101,12 +1101,12 @@ Do NOT push — the workspace handles pushing.
 
 ## Phase 10: Push + Auto PR
 
-Chỉ chạy khi Phase 9 validation PASSED.
+Only runs when Phase 9 validation PASSED.
 
 ```typescript
 async function pushAndCreatePR(session: Session, epic: Epic, repos: any[]): Promise<void> {
-  // Nếu multi-repo: push tất cả repos trước khi tạo PR
-  // Đảm bảo nếu push 1 repo fail, không tạo PR cho repo kia (consistency)
+  // If multi-repo: push all repos before creating PRs
+  // Ensure if pushing 1 repo fails, no PR is created for the other (consistency)
 
   // Step 1: Push ALL repos (collect errors)
   const pushResults: Array<{ repo: string, success: boolean, error?: string }> = []
@@ -1173,13 +1173,13 @@ async function pushAndCreatePR(session: Session, epic: Epic, repos: any[]): Prom
   }
 
   // 8. Index session in CASS
-  // Vì không dùng --bare, claude ghi session log vào ~/.claude/
-  // → cass index sẽ tìm thấy session mới
+  // Since we don't use --bare, claude writes session logs to ~/.claude/
+  // → cass index will find the new session
   try {
     await cassService.index()
   } catch (e) {
-    // Fallback: nếu cass index fail (session log bị corrupt, v.v.),
-    // export session_events từ DB thành JSONL file mà cass đọc được
+    // Fallback: if cass index fails (session log is corrupt, etc.),
+    // export session_events from DB as a JSONL file that cass can read
     log.warn('CASS index failed, attempting fallback export', e)
     try {
       await cassService.exportSessionFromDb(session.id, session.claude_session_id)
@@ -1262,7 +1262,7 @@ Provide your review as structured feedback:
 
 ## Phase 11: Feedback Loop
 
-Khi human comments trên PR → trigger agent fix:
+When a human comments on the PR → trigger agent fix:
 
 ```typescript
 async function handleHumanFeedback(
@@ -1304,7 +1304,7 @@ async function mergeEpic(sessionId: string, strategy: 'squash' = 'squash'): Prom
   // 1. Merge PR
   await gitService.mergePR(session.pr_url, { strategy: 'squash' })
 
-  // 2. Pull main mới (vì vừa merge PR vào main trên remote)
+  // 2. Pull updated main (since we just merged the PR into main on remote)
   const branches = JSON.parse(epic.git_branches)
   for (const { repo } of branches) {
     const repoConfig = project.repos.find(r => r.name === repo)
@@ -1318,8 +1318,8 @@ async function mergeEpic(sessionId: string, strategy: 'squash' = 'squash'): Prom
   // 4. Sync beads → export to .beads/issues.jsonl
   await beadsService.syncExport()
 
-  // 5. CRITICAL: Commit và push .beads/ changes lên main
-  // Không làm bước này → team devs pull code vẫn thấy Epic "In Progress"
+  // 5. CRITICAL: Commit and push .beads/ changes to main
+  // Skipping this step → team devs pulling code still see Epic as "In Progress"
   const beadsRoot = project.beads_root
   await gitService.run(beadsRoot, ['add', '.beads/'])
   await gitService.run(beadsRoot, [

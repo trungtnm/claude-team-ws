@@ -1,28 +1,28 @@
 # claude-team-ws — Kickoff Document
 
-> **LƯU Ý QUAN TRỌNG:** claude-team-ws là một **project hoàn toàn mới**, repo riêng, không nằm trong và không phụ thuộc vào claude-code-utils (ccu). Bộ docs này được lưu trong ccu repo chỉ vì đây là nơi brainstorm diễn ra. Khi kick off, tạo repo mới từ đầu.
+> **IMPORTANT NOTE:** claude-team-ws is a **completely new project** with its own repo. It does not live inside or depend on claude-code-utils (ccu). This doc set was originally stored in the ccu repo only because that's where brainstorming took place. When kicking off, create a new repo from scratch.
 >
-> Các khái niệm từ ccu (br, bv, orchestrator, agent mail, CASS, CM...) chỉ mang tính **tham khảo về CLI commands và integration patterns** — không import code, không depend vào ccu.
+> Concepts from ccu (br, bv, orchestrator, agent mail, CASS, CM, etc.) are only used as **reference for CLI commands and integration patterns** — no code is imported from, and there is no dependency on, ccu.
 
-## Tổng quan
+## Overview
 
-Semi-Auto Epic-Driven Dev Workspace cho team dev. Chạy trên Mac Mini, truy cập qua Cloudflare Tunnel.
+Semi-Auto Epic-Driven Dev Workspace for development teams. Runs on Mac Mini, accessed via Cloudflare Tunnel.
 
 ## Documents
 
-| # | File | Nội dung |
-|---|------|---------|
-| 00 | `00-kickoff-readme.md` | **Bạn đang đọc file này** — Tổng quan và hướng dẫn kickoff |
-| 01 | `01-database-schema.md` | Database schema chi tiết (app SQLite + Beads reference) |
+| # | File | Contents |
+|---|------|----------|
+| 00 | `00-kickoff-readme.md` | **You are reading this file** — Overview and kickoff guide |
+| 01 | `01-database-schema.md` | Detailed database schema (app SQLite + Beads reference) |
 | 02 | `02-api-specification.md` | REST API routes + request/response formats |
 | 03 | `03-infrastructure-setup.md` | Docker Compose, PM2, Cloudflare Tunnel, host requirements |
 | 04 | `04-socket-io-events.md` | Socket.IO events, rooms, real-time communication protocol |
-| 05 | `05-ui-wireframes.md` | ASCII wireframes cho mọi page + component specs |
+| 05 | `05-ui-wireframes.md` | ASCII wireframes for all pages + component specs |
 | 06 | `06-agent-lifecycle.md` | Agent spawn → stream → complete → PR → review → merge flow |
-| 07 | `07-dependencies.md` | Package.json cho cả monorepo + version pinning |
-| 08 | `08-project-claude-md.md` | Template CLAUDE.md cho project |
+| 07 | `07-dependencies.md` | Package.json for the monorepo + version pinning |
+| 08 | `08-project-claude-md.md` | Template CLAUDE.md for projects |
 | 09 | `09-umbrella-repo-workflow.md` | Umbrella repo pattern: 2-tier git, beads sync, conflict resolution |
-| — | `plan.md` | Architecture plan gốc (5 Pillars, decisions, phases) |
+| — | `plan.md` | Original architecture plan (5 Pillars, decisions, phases) |
 
 ## Architecture Summary
 
@@ -53,25 +53,26 @@ Browser ◄──Socket.IO──► Express API ──spawn──► claude CLI
 
 ## Implementation Phases
 
-### Phase 1: Foundation (~3 ngày)
-- [ ] Init pnpm monorepo (client + server)
-- [ ] Docker Compose: Agent Mail + CM
-- [ ] Express server + Drizzle schema + migrations
-- [ ] Vite + React + shadcn/ui scaffold
-- [ ] 4-role auth (API key + JWT session)
-- [ ] Socket.IO setup (rooms, auth middleware)
-- [ ] Service wrappers: BeadsService, BvService, AgentManager, AgentMailClient, CmClient, CassService
-- [ ] Health check on startup (verify all CLI tools + Docker services)
+### Phase 1: Foundation (~3 days) — Mostly Complete
+- [x] Init pnpm monorepo (client + server)
+- [x] Docker Compose: Agent Mail + CM
+- [x] Express server + Drizzle schema + migrations
+- [x] Vite + React + shadcn/ui scaffold
+- [x] 4-role auth (API key + JWT session)
+- [x] Socket.IO setup (rooms, auth middleware)
+- [x] Service wrappers: BeadsService, BvService, AgentManager, AgentMailClient, CmClient, CassService
+- [x] Health check on startup (verify all CLI tools + Docker services)
+- [x] Unit tests + integration test infrastructure
 
-### Phase 2: Capture + Triage + Epic Dashboard (~3 ngày)
-- [ ] Capture inbox sidebar (persistent, live, attributed)
-- [ ] Visual triage UI (drag → Epic creation with enrichment)
-- [ ] Epic-first Kanban board (dnd-kit, 5 columns)
+### Phase 2: Capture + Triage + Epic Dashboard (~3 days)
+- [ ] Captures page (full-page view with pending/deferred tabs)
+- [ ] Visual triage UI (4-phase AI-assisted flow to Epic creation)
+- [ ] Epic-first Kanban board (dnd-kit, 5 columns: Blocked/Ready/In Prog/In Review/Done)
 - [ ] Epic side panel (details, nested beads, sessions, git)
 - [ ] br integration for Epic/Bead CRUD
-- [ ] Socket.IO events cho board updates
+- [ ] Socket.IO events for board updates
 
-### Phase 3: Execution Engine (~3 ngày)
+### Phase 3: Execution Engine (~3 days)
 - [ ] "Start Agent Session" → scope gate → git branch → spawn
 - [ ] Agent context building (CM rules + CASS learnings)
 - [ ] NDJSON stream parsing + Socket.IO broadcast
@@ -80,7 +81,7 @@ Browser ◄──Socket.IO──► Express API ──spawn──► claude CLI
 - [ ] Concurrency limit + queue management
 - [ ] Cancel/resume session
 
-### Phase 4: Quality Gate (~2 ngày)
+### Phase 4: Quality Gate (~2 days)
 - [ ] Auto push + PR creation via `gh`
 - [ ] Code Review Agent auto-spawn
 - [ ] PR Review Module UI (diff + AI comments side-by-side)
@@ -88,7 +89,7 @@ Browser ◄──Socket.IO──► Express API ──spawn──► claude CLI
 - [ ] Squash merge workflow
 - [ ] Branch cleanup post-merge
 
-### Phase 5: Shared Memory + Notifications (~2 ngày)
+### Phase 5: Shared Memory + Notifications (~2 days)
 - [ ] CM rules management UI (TechLead tab)
 - [ ] Agent Mail thread viewer
 - [ ] CASS session indexing post-completion
@@ -96,7 +97,7 @@ Browser ◄──Socket.IO──► Express API ──spawn──► claude CLI
 - [ ] In-app notification bell + badge
 - [ ] Browser push notifications
 
-### Phase 6: Graph + Deployment (~2 ngày)
+### Phase 6: Graph + Deployment (~2 days)
 - [ ] bv dependency graph (React Flow + dagre layout)
 - [ ] Critical path + bottleneck visualization
 - [ ] Cloudflare Tunnel production setup

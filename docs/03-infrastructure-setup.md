@@ -15,9 +15,9 @@
 | Tool | Install | Verify |
 |------|---------|--------|
 | `claude` | `npm install -g @anthropic-ai/claude-code` | `claude --version` |
-| `br` | `cargo install beads_rust` hoặc download binary | `br --version` |
-| `bv` | `cargo install beads_viewer` hoặc download binary | `bv --version` |
-| `cass` | Download binary từ releases | `cass --version` |
+| `br` | `cargo install beads_rust` or download binary | `br --version` |
+| `bv` | `cargo install beads_viewer` or download binary | `bv --version` |
+| `cass` | Download binary from releases | `cass --version` |
 | `gh` | `brew install gh` | `gh --version` |
 | `node` | `nvm install 20` | `node --version` |
 | `pnpm` | `npm install -g pnpm` | `pnpm --version` |
@@ -27,10 +27,10 @@
 
 ### Claude CLI Authentication
 
-Claude Code phải được authenticate trên host trước:
+Claude Code must be authenticated on the host first:
 ```bash
 claude auth login
-# hoặc set ANTHROPIC_AUTH_TOKEN trong .env
+# or set ANTHROPIC_AUTH_TOKEN in .env
 ```
 
 ### GitHub CLI Authentication
@@ -184,16 +184,16 @@ DATABASE_PATH=./data/workspace.db
 
 # ─── Auth ──────────────────────────────────────
 JWT_SECRET=change-me-to-random-string
-# Seed admin user (chỉ dùng lần đầu)
+# Seed admin user (only used on first run)
 ADMIN_NAME=Admin
 ADMIN_EMAIL=admin@team.com
 ADMIN_API_KEY=ctw_admin_change_me
 
 # ─── Claude CLI ────────────────────────────────
-# Nếu không dùng claude auth login
+# If not using claude auth login
 # ANTHROPIC_AUTH_TOKEN=sk-ant-...
 
-# Default model cho agent sessions
+# Default model for agent sessions
 DEFAULT_MODEL=sonnet
 
 # ─── Agent Mail (Docker) ──────────────────────
@@ -205,7 +205,7 @@ CM_URL=http://127.0.0.1:9900
 ANTHROPIC_API_KEY=sk-ant-...
 
 # ─── Project ──────────────────────────────────
-# Path to project root (nơi chứa .beads/ và repos/)
+# Path to project root (where .beads/ and repos/ live)
 PROJECT_ROOT=/Users/team/myproject
 
 # ─── Webhooks (optional) ──────────────────────
@@ -234,7 +234,7 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3000,
       },
-      instances: 1,          // Single instance (SQLite không hỗ trợ multi-process writes)
+      instances: 1,          // Single instance (SQLite does not support multi-process writes)
       autorestart: true,
       max_restarts: 10,
       max_memory_restart: '1G',
@@ -271,14 +271,14 @@ pm2 save
 
 ## Cloudflare Tunnel + Zero Trust Setup
 
-### Tại sao Cloudflare Zero Trust Access?
+### Why Cloudflare Zero Trust Access?
 
-Workspace được public ra internet qua Tunnel. Thay vì tự code login/brute-force protection, dùng **Cloudflare Access** làm authentication gate ở lớp ngoài cùng:
+The workspace is exposed to the internet via Tunnel. Instead of writing custom login/brute-force protection, use **Cloudflare Access** as the outermost authentication gate:
 
-- Chỉ email công ty / GitHub team members mới vào được
-- MFA enforcement ở Cloudflare level
+- Only company email / GitHub team members can access
+- MFA enforcement at the Cloudflare level
 - DDoS protection built-in
-- Express app bên trong chỉ lo role-based logic, không lo internet threats
+- Express app only handles role-based logic, not internet threats
 
 **Auth flow:**
 ```
@@ -320,7 +320,7 @@ cloudflared tunnel route dns claude-team-ws workspace.yourdomain.com
 
 ### Zero Trust Access Policy (Cloudflare Dashboard)
 
-1. Vào **Cloudflare Dashboard → Zero Trust → Access → Applications**
+1. Go to **Cloudflare Dashboard → Zero Trust → Access → Applications**
 2. **Add Application** → Self-hosted
 3. Configure:
    - **Application name**: Claude Team Workspace
@@ -329,25 +329,25 @@ cloudflared tunnel route dns claude-team-ws workspace.yourdomain.com
 4. **Add Policy**:
    - **Policy name**: Team Members Only
    - **Action**: Allow
-   - **Include rules** (chọn 1 hoặc nhiều):
+   - **Include rules** (choose one or more):
      - **Emails**: `dev1@company.com`, `dev2@company.com`, ...
-     - **Email domains**: `@company.com` (cho phép toàn bộ domain)
+     - **Email domains**: `@company.com` (allow entire domain)
      - **GitHub organization**: `your-org-name`
-   - **Require**: Multi-factor authentication (optional nhưng recommended)
+   - **Require**: Multi-factor authentication (optional but recommended)
 5. **Save**
 
 ### Identity Providers (optional)
 
-Mặc định Cloudflare gửi OTP qua email. Có thể thêm:
-- **GitHub**: Team members login bằng GitHub account
-- **Google Workspace**: Login bằng company Google account
-- **SAML/OIDC**: Integrate với company SSO
+By default Cloudflare sends OTP via email. You can also add:
+- **GitHub**: Team members login with GitHub account
+- **Google Workspace**: Login with company Google account
+- **SAML/OIDC**: Integrate with company SSO
 
-Setup tại: **Zero Trust → Settings → Authentication → Login methods**
+Setup at: **Zero Trust → Settings → Authentication → Login methods**
 
 ### Express App: Trust Cloudflare Headers
 
-Khi Cloudflare Access đã xác thực user, nó gửi JWT trong header `Cf-Access-Jwt-Assertion`. Express app có thể:
+When Cloudflare Access has authenticated a user, it sends a JWT in the `Cf-Access-Jwt-Assertion` header. The Express app can:
 
 ```typescript
 // middleware/cloudflare-auth.ts
@@ -380,7 +380,7 @@ export async function cloudflareAuth(req, res, next) {
 }
 ```
 
-**Kết hợp**: Cloudflare Access xác thực identity (email) → Express app map email → user record → role check.
+**Combined flow**: Cloudflare Access authenticates identity (email) → Express app maps email → user record → role check.
 
 ### Run Tunnel
 
@@ -397,7 +397,7 @@ sudo launchctl start com.cloudflare.cloudflared
 
 ## Workspace Project Layout (Runtime)
 
-Khi tạo project trong workspace, cấu trúc target repo(s):
+When creating a project in the workspace, the target repo(s) structure:
 
 ```
 /Users/team/myproject/           # PROJECT_ROOT

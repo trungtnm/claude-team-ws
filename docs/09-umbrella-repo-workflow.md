@@ -1,70 +1,70 @@
 # Umbrella Repo Workflow — claude-team-ws
 
-## Tổng quan
+## Overview
 
-Mỗi project trong workspace được back bởi một **umbrella repo** — một git repo nhẹ chỉ track metadata dự án (Beads state, CM rules, project config), không track source code. Source code nằm trong các **code repos** riêng biệt bên trong thư mục `repos/`.
+Each project in the workspace is backed by an **umbrella repo** — a lightweight git repo that only tracks project metadata (Beads state, CM rules, project config), not source code. Source code lives in separate **code repos** inside the `repos/` directory.
 
 ```
-myproject/                  ← Umbrella repo (.git ở đây)
-├── .beads/issues.jsonl     ← Tracked: issue state cho toàn team
+myproject/                  ← Umbrella repo (.git here)
+├── .beads/issues.jsonl     ← Tracked: issue state for the whole team
 ├── .cass/playbook.yaml     ← Tracked: team rules
 ├── repos/
-│   ├── backend/            ← Code repo riêng (.git riêng)
-│   └── frontend/           ← Code repo riêng (.git riêng)
+│   ├── backend/            ← Separate code repo (its own .git)
+│   └── frontend/           ← Separate code repo (its own .git)
 └── .ccu/                   ← Gitignored: ephemeral session state
 ```
 
-**2 tầng git hoàn toàn độc lập:**
+**2 completely independent git layers:**
 
 | | Umbrella repo | Code repos |
 |---|---|---|
 | **Path** | `myproject/` | `myproject/repos/backend/`, `myproject/repos/frontend/` |
 | **Tracks** | `.beads/issues.jsonl`, `.cass/`, config | Source code, tests, configs |
-| **Commit frequency** | Vài lần/ngày (khi beads state thay đổi) | Liên tục (agent commits, dev commits) |
+| **Commit frequency** | A few times/day (when beads state changes) | Continuously (agent commits, dev commits) |
 | **Who pushes** | Workspace app (auto) | Agents (auto), devs (manual) |
-| **Remote** | Private repo riêng (vd: `team/myproject-meta`) | Repos chính của team (vd: `team/backend`) |
-| **Branch strategy** | Chỉ `main` (không branch) | `main` + `epic/<slug>` branches |
+| **Remote** | Separate private repo (e.g., `team/myproject-meta`) | Team's main repos (e.g., `team/backend`) |
+| **Branch strategy** | Only `main` (no branches) | `main` + `epic/<slug>` branches |
 
 ---
 
-## Vòng đời Project
+## Project Lifecycle
 
-### 1. Tạo Project
+### 1. Create Project
 
-PM click **"New Project"** trong workspace UI.
+PM clicks **"New Project"** in the workspace UI.
 
 ```
 POST /api/projects { "name": "MyApp", "slug": "myapp" }
 ```
 
-**Server thực hiện:**
+**Server performs:**
 
 ```bash
-# 1. Tạo project directory
+# 1. Create project directory
 mkdir -p /data/projects/myapp/repos
 
 # 2. Init umbrella repo
 cd /data/projects/myapp
 git init
-git remote add origin git@github.com:team/myapp-meta.git   # optional: PM nhập URL sau
+git remote add origin git@github.com:team/myapp-meta.git   # optional: PM enters URL later
 
 # 3. Init Beads
 br init
-# → Tạo .beads/beads.db, .beads/config.yaml
+# → Creates .beads/beads.db, .beads/config.yaml
 
 # 4. Init CM project rules
 mkdir -p .cass
 echo '{}' > .cass/config.json
 touch .cass/playbook.yaml
 
-# 5. Tạo .gitignore
+# 5. Create .gitignore
 cat > .gitignore << 'EOF'
-# Beads SQLite (binary, rebuilt từ JSONL)
+# Beads SQLite (binary, rebuilt from JSONL)
 .beads/beads.db
 .beads/beads.db-wal
 .beads/beads.db-shm
 
-# Code repos (mỗi repo có .git riêng, umbrella không track code)
+# Code repos (each repo has its own .git, umbrella does not track code)
 repos/
 
 # Session state
@@ -81,11 +81,11 @@ EOF
 git add .
 git commit -m "Init project: MyApp"
 
-# 7. Push (nếu có remote)
+# 7. Push (if remote exists)
 git push -u origin main
 ```
 
-**Kết quả trên disk:**
+**Result on disk:**
 
 ```
 /data/projects/myapp/
@@ -95,16 +95,16 @@ git push -u origin main
 │   ├── beads.db             ← Gitignored (binary)
 │   ├── beads.db-wal         ← Gitignored
 │   ├── config.yaml          ← Tracked
-│   └── issues.jsonl         ← Tracked (chưa có issues, file trống)
+│   └── issues.jsonl         ← Tracked (no issues yet, file is empty)
 ├── .cass/
 │   ├── config.json          ← Tracked
 │   └── playbook.yaml        ← Tracked
-└── repos/                   ← Gitignored (code repos bên trong có .git riêng)
+└── repos/                   ← Gitignored (code repos inside have their own .git)
 ```
 
-### 2. Thêm Repos
+### 2. Add Repos
 
-PM vào **Settings > Repos > [+ Add]**.
+PM goes to **Settings > Repos > [+ Add]**.
 
 **Clone mode:**
 
@@ -114,38 +114,38 @@ git clone git@github.com:team/backend.git repos/backend
 git clone git@github.com:team/frontend.git repos/frontend
 ```
 
-**Link mode** (repo đã clone sẵn trên host):
+**Link mode** (repo already cloned on host):
 
 ```bash
 ln -s /Users/dev/existing-mobile-app /data/projects/myapp/repos/mobile
 ```
 
-**Kết quả:**
+**Result:**
 
 ```
 /data/projects/myapp/
 ├── .git/                          ← Umbrella
 ├── .beads/                        ← Shared beads
 ├── repos/
-│   ├── backend/                   ← .git riêng, remote: team/backend
+│   ├── backend/                   ← Its own .git, remote: team/backend
 │   │   ├── .git/
 │   │   ├── src/
 │   │   └── package.json
-│   ├── frontend/                  ← .git riêng, remote: team/frontend
+│   ├── frontend/                  ← Its own .git, remote: team/frontend
 │   │   ├── .git/
 │   │   └── src/
-│   └── mobile -> /Users/dev/...   ← Symlink, .git ở source
+│   └── mobile -> /Users/dev/...   ← Symlink, .git at source
 └── .ccu/
 ```
 
-**Lưu ý:** `repos/` nằm trong `.gitignore` của umbrella. Umbrella KHÔNG track code repos. Mỗi code repo có lifecycle git riêng.
+**Note:** `repos/` is in the umbrella's `.gitignore`. The umbrella does NOT track code repos. Each code repo has its own git lifecycle.
 
-### 3. Tạo Epic
+### 3. Create Epic
 
-PM triage capture → tạo Epic "Auth Refactor" target backend + frontend.
+PM triages capture → creates Epic "Auth Refactor" targeting backend + frontend.
 
 ```bash
-# Workspace app chạy (cwd = /data/projects/myapp):
+# Workspace app runs (cwd = /data/projects/myapp):
 br create --type epic --title "Auth Refactor" --priority 1 --labels "backend,frontend" --json
 # → bd-42 created
 
@@ -153,7 +153,7 @@ br sync --flush-only
 # → .beads/issues.jsonl updated on disk
 ```
 
-**Sync umbrella repo** (auto, vì đây là critical event):
+**Sync umbrella repo** (auto, since this is a critical event):
 
 ```bash
 cd /data/projects/myapp
@@ -164,12 +164,12 @@ git push origin main
 
 ### 4. Start Agent Session
 
-PM click **"Start"** trên Epic card.
+PM clicks **"Start"** on the Epic card.
 
-**Bước 1 — Pull code repos mới nhất:**
+**Step 1 — Pull latest code repos:**
 
 ```bash
-# Trong MỖI code repo mà Epic target:
+# In EACH code repo that the Epic targets:
 cd /data/projects/myapp/repos/backend
 git checkout main
 git pull origin main
@@ -179,7 +179,7 @@ git checkout main
 git pull origin main
 ```
 
-**Bước 2 — Tạo epic branch trong mỗi code repo:**
+**Step 2 — Create epic branch in each code repo:**
 
 ```bash
 cd /data/projects/myapp/repos/backend
@@ -189,7 +189,7 @@ cd /data/projects/myapp/repos/frontend
 git checkout -b epic/auth-refactor
 ```
 
-**Bước 3 — Spawn agent:**
+**Step 3 — Spawn agent:**
 
 ```bash
 claude -p --output-format=stream-json \
@@ -199,53 +199,53 @@ claude -p --output-format=stream-json \
   "<prompt>"
 ```
 
-Agent có access cả 2 repos. Commits trên epic branches trong code repos. **Umbrella repo không thay đổi** trong phase này.
+The agent has access to both repos. It commits on epic branches in the code repos. **The umbrella repo does not change** during this phase.
 
 ### 5. Agent Completes → Auto PR
 
-Agent xong → workspace app:
+Agent finishes → workspace app:
 
 ```bash
-# Push epic branches trong code repos
+# Push epic branches in code repos
 cd /data/projects/myapp/repos/backend
 git push -u origin epic/auth-refactor
 
 cd /data/projects/myapp/repos/frontend
 git push -u origin epic/auth-refactor
 
-# Tạo PR cho mỗi repo
+# Create PR for each repo
 gh pr create --repo team/backend --base main --head epic/auth-refactor \
   --title "[Epic] Auth Refactor" --body "..."
 gh pr create --repo team/frontend --base main --head epic/auth-refactor \
   --title "[Epic] Auth Refactor" --body "..."
 ```
 
-**Beads update** (agent đang work → update status):
+**Beads update** (agent is working → update status):
 
 ```bash
 cd /data/projects/myapp
 br update bd-42 --status in_progress --actor "BlueLake"
 br sync --flush-only
-# KHÔNG push umbrella ngay — chờ periodic sync (mỗi 5 phút)
+# Do NOT push umbrella immediately — wait for periodic sync (every 5 minutes)
 ```
 
 ### 6. Review → Merge
 
-PM review PRs, click **"Merge"**.
+PM reviews PRs, clicks **"Merge"**.
 
 ```bash
-# 1. Merge PRs trên GitHub
+# 1. Merge PRs on GitHub
 gh pr merge --squash <backend-pr-url>
 gh pr merge --squash <frontend-pr-url>
 
-# 2. Pull main mới trong code repos (vì vừa merge)
+# 2. Pull updated main in code repos (since we just merged)
 cd /data/projects/myapp/repos/backend
 git checkout main && git pull origin main
 
 cd /data/projects/myapp/repos/frontend
 git checkout main && git pull origin main
 
-# 3. Close Epic trong Beads
+# 3. Close Epic in Beads
 cd /data/projects/myapp
 br close bd-42 --reason "Merged backend PR #45, frontend PR #67" --actor "system"
 
@@ -264,7 +264,7 @@ cd repos/frontend && git branch -D epic/auth-refactor && git push origin --delet
 
 ### 7. Periodic Beads Sync
 
-Workspace app chạy background job mỗi 5 phút:
+Workspace app runs a background job every 5 minutes:
 
 ```typescript
 // BeadsSyncService
@@ -289,7 +289,7 @@ async periodicSync() {
 }
 ```
 
-**Critical events** (create epic, close epic, merge PR) trigger immediate sync — không chờ periodic.
+**Critical events** (create epic, close epic, merge PR) trigger immediate sync — they do not wait for periodic sync.
 
 ---
 
@@ -297,7 +297,7 @@ async periodicSync() {
 
 ### A. Workspace App → Team (push beads state)
 
-Đây là flow chính. Workspace app là single writer cho beads.
+This is the primary flow. The workspace app is the single writer for beads.
 
 ```
 Mutation (create/update/close bead)
@@ -309,21 +309,21 @@ br <command> --json         # modify beads.db
 br sync --flush-only        # export beads.db → issues.jsonl
     │
     ▼
-Nếu critical event:
+If critical event:
     git add .beads/ && git commit && git push    # umbrella repo
-Nếu không:
-    markDirty() → periodic sync sẽ push sau
+If not:
+    markDirty() → periodic sync will push later
 ```
 
 ### B. Team → Workspace App (pull beads state)
 
-Khi ai đó ngoài workspace app modify beads (vd: CLI dev trên laptop).
+When someone outside the workspace app modifies beads (e.g., a CLI dev on their laptop).
 
 ```
 Workspace app startup:
     │
     ▼
-git pull origin main        # umbrella repo — lấy issues.jsonl mới nhất
+git pull origin main        # umbrella repo — get latest issues.jsonl
     │
     ▼
 br sync --import-only       # import issues.jsonl → beads.db
@@ -332,11 +332,11 @@ br sync --import-only       # import issues.jsonl → beads.db
 Board UI reflects latest state
 ```
 
-**Cũng chạy khi:** nhận webhook/polling phát hiện umbrella repo có commits mới.
+**Also runs when:** a webhook/polling detects that the umbrella repo has new commits.
 
 ### C. CLI Dev → Umbrella Repo (manual sync)
 
-Dev trên laptop muốn tạo bead từ terminal (không qua web UI):
+A dev on their laptop wants to create a bead from the terminal (not via the web UI):
 
 ```bash
 # 1. Pull latest beads state
@@ -354,11 +354,11 @@ git commit -m "beads: add bug bd-50 Fix timeout"
 git push origin main
 ```
 
-**Workspace app** sẽ pick up thay đổi này trong periodic sync (pull → import).
+**Workspace app** will pick up this change during periodic sync (pull → import).
 
 ### D. Conflict Resolution
 
-Khi workspace app push nhưng umbrella repo đã bị update bởi CLI dev:
+When the workspace app pushes but the umbrella repo has already been updated by a CLI dev:
 
 ```
 Workspace app: git push origin main
@@ -369,35 +369,35 @@ REJECTED (remote has new commits)
     ▼
 git pull --rebase origin main
     │
-    ├── Không conflict → git push origin main ✅
+    ├── No conflict → git push origin main ✅
     │
-    └── Conflict trên issues.jsonl:
+    └── Conflict on issues.jsonl:
         │
         ▼
      br sync --merge        # 3-way merge: base + local DB + remote JSONL
         │
         ├── Merge OK → git add .beads/ → git rebase --continue → git push ✅
         │
-        └── Merge FAIL (hoặc rebase vẫn conflict):
+        └── Merge FAIL (or rebase still conflicting):
             │
             ▼
-         git rebase --abort                    # rollback, KHÔNG để repo stuck
-         emit 'beads:sync_conflict' via Socket.IO   # báo đỏ lên UI
+         git rebase --abort                    # rollback, do NOT leave repo stuck
+         emit 'beads:sync_conflict' via Socket.IO   # show red alert in UI
          log error + set project.sync_status = 'conflict'
-         ❌ STOP — chờ TechLead resolve thủ công
+         ❌ STOP — wait for TechLead to resolve manually
 ```
 
-**Khi auto-resolve thành công** — `br sync --merge` logic:
-- Issue tồn tại ở cả 2 sides → lấy version có `updated_at` mới hơn
-- Issue chỉ ở 1 side → giữ nguyên (new creation)
-- Issue closed ở 1 side, open ở side kia → closed wins (không reopen)
+**When auto-resolve succeeds** — `br sync --merge` logic:
+- Issue exists on both sides → take the version with the more recent `updated_at`
+- Issue only on one side → keep it (new creation)
+- Issue closed on one side, open on the other → closed wins (do not reopen)
 
-**Khi auto-resolve FAIL** — server PHẢI:
-1. `git rebase --abort` ngay lập tức (không để repo ở trạng thái rebase dở)
-2. Emit Socket.IO event để UI hiện alert đỏ
-3. Gửi notification cho TechLead
-4. Set `sync_status = 'conflict'` → periodic sync tạm dừng cho project này
-5. Mọi beads mutations vẫn hoạt động bình thường (ghi vào beads.db, UI vẫn chạy) — chỉ sync ra git bị block
+**When auto-resolve FAILS** — server MUST:
+1. `git rebase --abort` immediately (do not leave repo in a mid-rebase state)
+2. Emit Socket.IO event so the UI shows a red alert
+3. Send notification to TechLead
+4. Set `sync_status = 'conflict'` → periodic sync pauses for this project
+5. All beads mutations continue working normally (written to beads.db, UI still works) — only git sync is blocked
 
 ```typescript
 // BeadsSyncService — flushAndPush with conflict handling
@@ -493,17 +493,17 @@ async resumeAfterConflictResolved(): Promise<void> {
 }
 ```
 
-**TechLead manual resolution trên host:**
+**TechLead manual resolution on host:**
 
 ```bash
-# SSH vào Mac Mini
+# SSH into Mac Mini
 cd /data/projects/myapp
 
-# Xem trạng thái
+# Check status
 git status
-# → "rebase in progress" hoặc "diverged from origin/main"
+# → "rebase in progress" or "diverged from origin/main"
 
-# Option 1: Force accept remote (mất local changes chưa push)
+# Option 1: Force accept remote (loses local changes not yet pushed)
 git rebase --abort
 git pull origin main
 br sync --import-only
@@ -523,11 +523,11 @@ git add .beads/ && git commit -m "beads: resolve merge conflict"
 git push origin main
 ```
 
-**Sau khi TechLead resolve xong**, gọi API hoặc click button trong UI:
+**After TechLead finishes resolving**, call the API or click the button in the UI:
 ```
 POST /api/projects/:id/beads-sync/resume
 ```
-→ Server chạy `resumeAfterConflictResolved()` → periodic sync hoạt động lại.
+→ Server runs `resumeAfterConflictResolved()` → periodic sync resumes.
 
 ---
 
@@ -557,9 +557,9 @@ POST /api/projects/:id/beads-sync/resume
      │            squash merge     │          │            squash merge     │
      └─────────────────────────────┘          └─────────────────────────────┘
 
-     Mỗi repo có lifecycle riêng.
-     Epic branches tạo/xóa bởi workspace app.
-     Squash merge bởi PM/TechLead qua UI.
+     Each repo has its own lifecycle.
+     Epic branches are created/deleted by the workspace app.
+     Squash merge is done by PM/TechLead via UI.
 ```
 
 ---
@@ -569,43 +569,43 @@ POST /api/projects/:id/beads-sync/resume
 ### Option A: GitHub private repo (recommended)
 
 ```bash
-# Tạo repo trên GitHub (private)
+# Create repo on GitHub (private)
 gh repo create team/myapp-meta --private --description "Project metadata for MyApp"
 
-# Set remote trong umbrella
+# Set remote in umbrella
 cd /data/projects/myapp
 git remote add origin git@github.com:team/myapp-meta.git
 git push -u origin main
 ```
 
-**Ưu điểm:** Backup, team có thể clone, GitHub UI xem history.
+**Pros:** Backup, team can clone, GitHub UI for viewing history.
 
-### Option B: Bare repo trên host (simple)
+### Option B: Bare repo on host (simple)
 
 ```bash
-# Tạo bare repo trên host
+# Create bare repo on host
 git init --bare /data/git-remotes/myapp-meta.git
 
-# Set remote trong umbrella
+# Set remote in umbrella
 cd /data/projects/myapp
 git remote add origin /data/git-remotes/myapp-meta.git
 git push -u origin main
 ```
 
-**Ưu điểm:** Không cần GitHub, hoàn toàn local. **Nhược:** Không có offsite backup.
+**Pros:** No GitHub needed, completely local. **Cons:** No offsite backup.
 
-### Option C: Không có remote
+### Option C: No remote
 
-Umbrella repo chỉ tồn tại trên Mac Mini. Không push đi đâu.
+Umbrella repo only exists on the Mac Mini. Not pushed anywhere.
 
-**Khi nào dùng:** Team nhỏ, chỉ dùng web UI, không có CLI devs.
-**Rủi ro:** Mất Mac Mini = mất beads history (beads.db có thể rebuild từ JSONL, nhưng JSONL cũng mất).
+**When to use:** Small team, only uses the web UI, no CLI devs.
+**Risk:** Losing the Mac Mini = losing beads history (beads.db can be rebuilt from JSONL, but JSONL is also lost).
 
 ---
 
-## Khi Project có 1 Repo duy nhất
+## When the Project Has a Single Repo
 
-Nếu team chỉ có 1 repo (monorepo hoặc single service), umbrella vẫn hoạt động:
+If the team only has 1 repo (monorepo or single service), the umbrella still works:
 
 ```
 /data/projects/myapp/
@@ -614,15 +614,15 @@ Nếu team chỉ có 1 repo (monorepo hoặc single service), umbrella vẫn ho�
 ├── .cass/
 ├── .gitignore
 └── repos/
-    └── app/                 ← Code repo duy nhất
+    └── app/                 ← Single code repo
         ├── .git/
         └── src/
 ```
 
-Mọi flow giống hệt. Chỉ có 1 code repo thay vì nhiều. Epic branches chỉ tạo trong `repos/app/`.
+Everything works the same. There is just 1 code repo instead of many. Epic branches are only created in `repos/app/`.
 
-**Alternative:** Đặt `.beads/` trực tiếp trong code repo (skip umbrella).
-**Không khuyến khích** vì: beads commits xen lẫn code commits, code reviewers thấy `issues.jsonl` changes trong mọi PR, khó tách biệt.
+**Alternative:** Place `.beads/` directly in the code repo (skip umbrella).
+**Not recommended** because: beads commits are intermixed with code commits, code reviewers see `issues.jsonl` changes in every PR, harder to keep separate.
 
 ---
 
@@ -632,13 +632,13 @@ Mọi flow giống hệt. Chỉ có 1 code repo thay vì nhiều. Epic branches 
 async function initializeProject(project: Project) {
   const root = project.project_root
 
-  // 1. Pull umbrella repo nếu có remote
+  // 1. Pull umbrella repo if it has a remote
   const hasRemote = await git(root, ['remote']).then(r => r.trim().length > 0)
   if (hasRemote) {
     await git(root, ['pull', 'origin', 'main'])
   }
 
-  // 2. Import beads state từ JSONL → DB
+  // 2. Import beads state from JSONL → DB
   await execFile('br', ['sync', '--import-only'], { cwd: root })
 
   // 3. Verify beads healthy
@@ -660,7 +660,7 @@ async function initializeProject(project: Project) {
   // 5. Start periodic beads sync
   beadsSyncService.start(project)
 
-  // 6. Recover orphaned sessions (nếu server vừa restart)
+  // 6. Recover orphaned sessions (if server just restarted)
   await recoverOrphanedSessions(project)
 }
 ```
@@ -669,45 +669,45 @@ async function initializeProject(project: Project) {
 
 ## Cheatsheet
 
-### Ai làm gì với git?
+### Who does what with git?
 
 | Action | Umbrella repo | Code repos |
 |--------|:---:|:---:|
-| Workspace app tạo Epic | `commit + push .beads/` | — |
+| Workspace app creates Epic | `commit + push .beads/` | — |
 | Agent spawn | — | `pull main`, `checkout -b epic/...` |
-| Agent working | — | `commit` (trên epic branch) |
+| Agent working | — | `commit` (on epic branch) |
 | Agent done | — | `push epic branch` |
 | Auto PR | — | `gh pr create` |
 | PM merge | `commit + push .beads/` (close epic) | `gh pr merge --squash`, `pull main`, delete branch |
 | Periodic sync | `commit + push .beads/` (if dirty) | — |
-| CLI dev tạo bead | `commit + push .beads/` | — |
+| CLI dev creates bead | `commit + push .beads/` | — |
 | App startup | `pull` | `pull main` |
 
-### br commands — cwd luôn là project root
+### br commands — cwd is always project root
 
 ```bash
-# Tất cả br commands chạy từ project root
+# All br commands run from the project root
 cd /data/projects/myapp
 
-br list --json              # List tất cả issues
-br create --title "..."     # Tạo issue
-br show bd-42 --json        # Chi tiết 1 issue
+br list --json              # List all issues
+br create --title "..."     # Create issue
+br show bd-42 --json        # Detail for 1 issue
 br close bd-42 --reason "." # Close issue
-br sync --flush-only        # Export DB → JSONL (sau mỗi mutation)
-br sync --import-only       # Import JSONL → DB (sau git pull)
-br sync --merge             # 3-way merge (khi conflict)
+br sync --flush-only        # Export DB → JSONL (after each mutation)
+br sync --import-only       # Import JSONL → DB (after git pull)
+br sync --merge             # 3-way merge (when conflict)
 ```
 
-### Khi nào commit + push umbrella?
+### When to commit + push umbrella?
 
 ```
-IMMEDIATE (ngay lập tức):
-  ✓ Tạo Epic
+IMMEDIATE (right away):
+  ✓ Create Epic
   ✓ Close Epic (merge PR)
   ✓ Delete Epic
   ✓ Triage capture → bead
 
-PERIODIC (mỗi 5 phút, nếu có thay đổi):
+PERIODIC (every 5 minutes, if there are changes):
   ✓ Update bead status
   ✓ Add/remove labels
   ✓ Add comments

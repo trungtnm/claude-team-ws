@@ -2,30 +2,30 @@
 
 ## Database Strategy
 
-### Tại sao SQLite?
+### Why SQLite?
 
-Workspace app chạy trên **1 Mac Mini duy nhất** — single server, single process (Express). Trong context này:
+The workspace app runs on **a single Mac Mini** — single server, single process (Express). In this context:
 
-| Tiêu chí | SQLite | PostgreSQL / MySQL |
+| Criterion | SQLite | PostgreSQL / MySQL |
 |---|---|---|
-| Deployment | Zero config, 1 file | Cần install, configure, maintain server |
+| Deployment | Zero config, 1 file | Requires install, configure, maintain server |
 | Backup | Copy 1 file (`cp workspace.db workspace.db.bak`) | `pg_dump`, cron jobs, storage |
-| Performance (single server) | Nhanh hơn cho reads, đủ cho writes | Overhead network protocol không cần thiết |
-| Concurrency | WAL mode: concurrent reads + serialized writes | Full MVCC — overkill cho 1 server |
-| Ops burden | Không có gì | Updates, vacuum, connection pooling, monitoring |
-| Disk footprint | ~50MB cho 10K sessions | ~200MB+ cho DB engine |
+| Performance (single server) | Faster for reads, sufficient for writes | Unnecessary network protocol overhead |
+| Concurrency | WAL mode: concurrent reads + serialized writes | Full MVCC — overkill for 1 server |
+| Ops burden | None | Updates, vacuum, connection pooling, monitoring |
+| Disk footprint | ~50MB for 10K sessions | ~200MB+ for DB engine |
 
-**Khi nào cần chuyển sang PostgreSQL?** Nếu tương lai cần:
+**When to switch to PostgreSQL?** If in the future you need:
 - Multiple server instances (horizontal scaling)
-- Concurrent writes từ nhiều processes (>1 Express instance)
+- Concurrent writes from multiple processes (>1 Express instance)
 - Advanced queries (full-text search, JSON operators, window functions)
 - Separate database server (security isolation)
 
-Hiện tại single Mac Mini + 1 Express process → SQLite là lựa chọn tối ưu.
+Currently single Mac Mini + 1 Express process → SQLite is the optimal choice.
 
 ### 2 Data Stores
 
-Hệ thống dùng **2 SQLite databases riêng biệt**, mỗi cái có owner và lifecycle khác nhau:
+The system uses **2 separate SQLite databases**, each with a different owner and lifecycle:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -35,13 +35,13 @@ Hệ thống dùng **2 SQLite databases riêng biệt**, mỗi cái có owner v�
 │  File:    {project_root}/data/workspace.db                       │
 │  Owner:   Express server (Drizzle ORM)                           │
 │  Access:  Direct SQL queries                                     │
-│  Backup:  Copy file, hoặc Drizzle export                         │
+│  Backup:  Copy file, or Drizzle export                           │
 │  Content: users, sessions, session_events, captures,             │
 │           epics (metadata), repos, knowledge_rules,              │
 │           agent_queue, notifications, activity_log,              │
 │           webhook_configs, project_members                       │
 │                                                                  │
-│  → Mọi thứ NGOẠI TRỪ issues/beads                               │
+│  → Everything EXCEPT issues/beads                                │
 │                                                                  │
 ├──────────────────────────────────────────────────────────────────┤
 │                                                                  │
@@ -49,28 +49,28 @@ Hệ thống dùng **2 SQLite databases riêng biệt**, mỗi cái có owner v�
 │  ─────────────────────────────                                   │
 │  File:    {project_root}/.beads/beads.db                         │
 │  Owner:   Beads Rust (`br` CLI)                                  │
-│  Access:  CHỈNH qua `br` CLI (execFile) — KHÔNG query trực tiếp │
+│  Access:  ONLY via `br` CLI (execFile) — NEVER query directly    │
 │  Sync:    Export → .beads/issues.jsonl (git-tracked)             │
 │  Content: issues, dependencies, comments, labels, audit trail    │
 │                                                                  │
-│  → Source of truth cho tất cả issues/epics/beads                 │
+│  → Source of truth for all issues/epics/beads                    │
 │                                                                  │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-**Tại sao 2 databases tách biệt thay vì gộp 1?**
+**Why 2 separate databases instead of 1?**
 
-| Lý do | Giải thích |
+| Reason | Explanation |
 |---|---|
-| **Ownership boundary** | `br` CLI owns beads.db — nó manage schema, migrations, WAL, vacuum. Nếu Express truy cập trực tiếp → coupling với br internal schema, breaking khi br upgrade. |
-| **Sync model khác nhau** | App DB chỉ sống trên host (không cần sync ra git). Beads DB phải sync qua git (JSONL) cho team visibility. Gộp 1 DB → phải sync toàn bộ (kể cả session_events — rất lớn). |
-| **Lifecycle khác nhau** | App DB có thể reset/migrate mà không ảnh hưởng issues. Beads DB là persistent dữ liệu project — sống lâu hơn workspace app. |
-| **Tooling** | `bv` (graph analysis) đọc trực tiếp beads.db. Nếu gộp → bv phải hiểu schema của app. |
+| **Ownership boundary** | `br` CLI owns beads.db — it manages schema, migrations, WAL, vacuum. If Express accessed it directly → coupling with br internal schema, breaking when br upgrades. |
+| **Different sync models** | App DB only lives on the host (no need to sync to git). Beads DB must sync via git (JSONL) for team visibility. Merging into 1 DB → would need to sync everything (including session_events — very large). |
+| **Different lifecycles** | App DB can be reset/migrated without affecting issues. Beads DB is persistent project data — it outlives the workspace app. |
+| **Tooling** | `bv` (graph analysis) reads beads.db directly. If merged → bv would need to understand the app schema. |
 
-**Quy tắc tuyệt đối:**
-- Express server **KHÔNG BAO GIỜ** `import Database from 'better-sqlite3'` trên `.beads/beads.db`
-- Mọi interaction với beads qua `execFile('br', [...], { cwd: projectRoot })`
-- Nếu cần data từ beads, gọi `br show <id> --json` rồi parse JSON response
+**Absolute rules:**
+- Express server **MUST NEVER** `import Database from 'better-sqlite3'` on `.beads/beads.db`
+- All interaction with beads via `execFile('br', [...], { cwd: projectRoot })`
+- If you need data from beads, call `br show <id> --json` and parse the JSON response
 
 ### SQLite Configuration
 
@@ -83,29 +83,29 @@ import { drizzle } from 'drizzle-orm/better-sqlite3'
 
 const sqlite = new Database(process.env.DATABASE_PATH || './data/workspace.db')
 
-// WAL mode: concurrent reads trong khi 1 write đang diễn ra
+// WAL mode: concurrent reads while a write is in progress
 sqlite.pragma('journal_mode = WAL')
 
-// Tăng cache cho read performance
+// Increase cache for read performance
 sqlite.pragma('cache_size = -64000')  // 64MB
 
 // Enforce foreign keys
 sqlite.pragma('foreign_keys = ON')
 
-// Sync mode: NORMAL đủ an toàn cho WAL (faster than FULL)
+// Sync mode: NORMAL is safe enough for WAL (faster than FULL)
 sqlite.pragma('synchronous = NORMAL')
 
 export const db = drizzle(sqlite)
 ```
 
 **Beads SQLite** (`.beads/beads.db`):
-- Managed hoàn toàn bởi `br` CLI
-- `br` tự set WAL mode, cache, vacuum
-- Express server không cần (và không nên) configure
+- Fully managed by `br` CLI
+- `br` sets WAL mode, cache, vacuum on its own
+- Express server does not need to (and should not) configure it
 
 ### Data Volume Estimates
 
-| Table | Growth rate | Rows sau 6 tháng | Size estimate |
+| Table | Growth rate | Rows after 6 months | Size estimate |
 |---|---|---|---|
 | users | Slow (team size) | ~20 | <1KB |
 | projects | Slow | ~5 | <1KB |
@@ -118,14 +118,14 @@ export const db = drizzle(sqlite)
 | notifications | ~10/day | ~1800 | ~500KB |
 | activity_log | ~20/day | ~3600 | ~1MB |
 
-**session_events là bảng lớn nhất** — mỗi agent session sinh ~500 NDJSON events. Cần cleanup strategy:
+**session_events is the largest table** — each agent session generates ~500 NDJSON events. Needs a cleanup strategy:
 
 ```typescript
-// Cleanup sessions cũ hơn 90 ngày
+// Cleanup sessions older than 90 days
 async function cleanupOldSessionEvents() {
   const cutoff = Math.floor(Date.now() / 1000) - (90 * 24 * 3600)
 
-  // Archive trước khi xóa (optional)
+  // Archive before deleting (optional)
   // ... export to file ...
 
   await db.delete(sessionEvents)
@@ -133,14 +133,14 @@ async function cleanupOldSessionEvents() {
 
   // Reclaim disk space
   sqlite.pragma('wal_checkpoint(TRUNCATE)')
-  // Periodic VACUUM (weekly cron hoặc PM2 scheduled restart)
+  // Periodic VACUUM (weekly cron or PM2 scheduled restart)
 }
 ```
 
 ### Backup Strategy
 
 ```bash
-# Daily backup (cron job trên Mac Mini)
+# Daily backup (cron job on Mac Mini)
 # 0 2 * * * /data/scripts/backup-workspace.sh
 
 #!/bin/bash
@@ -166,10 +166,10 @@ find /data/backups -maxdepth 1 -mtime +30 -type d -exec rm -rf {} +
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
 | id | TEXT | PK | UUID v4 |
-| name | TEXT | NOT NULL | Tên hiển thị |
-| email | TEXT | UNIQUE | Email đăng nhập |
+| name | TEXT | NOT NULL | Display name |
+| email | TEXT | UNIQUE | Login email |
 | role | TEXT | NOT NULL, DEFAULT 'member' | `pm` \| `dev` \| `techlead` \| `viewer` |
-| api_key | TEXT | UNIQUE | Per-user API key cho remote access |
+| api_key | TEXT | UNIQUE | Per-user API key for remote access |
 | avatar_url | TEXT | | URL avatar (optional) |
 | created_at | INTEGER | NOT NULL, DEFAULT unixepoch() | |
 | updated_at | INTEGER | NOT NULL, DEFAULT unixepoch() | |
@@ -183,37 +183,37 @@ find /data/backups -maxdepth 1 -mtime +30 -type d -exec rm -rf {} +
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
 | id | TEXT | PK | UUID v4 |
-| name | TEXT | NOT NULL | Tên project |
+| name | TEXT | NOT NULL | Project name |
 | slug | TEXT | NOT NULL, UNIQUE | URL-safe identifier |
-| project_root | TEXT | NOT NULL, UNIQUE | Absolute path tới project root (chứa `.beads/`, `repos/`) |
-| max_concurrent_agents | INTEGER | NOT NULL, DEFAULT 3 | Giới hạn agents đồng thời |
+| project_root | TEXT | NOT NULL, UNIQUE | Absolute path to the project root (contains `.beads/`, `repos/`) |
+| max_concurrent_agents | INTEGER | NOT NULL, DEFAULT 3 | Concurrent agent limit |
 | ask_question_mode | TEXT | NOT NULL, DEFAULT 'hybrid' | `pause` \| `auto` \| `hybrid` |
 | created_at | INTEGER | NOT NULL, DEFAULT unixepoch() | |
 | updated_at | INTEGER | NOT NULL, DEFAULT unixepoch() | |
 
-**Note:** `project_root` = umbrella repo root. `.beads/` luôn ở `{project_root}/.beads/`. `repos/` luôn ở `{project_root}/repos/`.
+**Note:** `project_root` = umbrella repo root. `.beads/` is always at `{project_root}/.beads/`. `repos/` is always at `{project_root}/repos/`.
 
 ---
 
 ### repos
 
-Mỗi row = 1 git repo trong project. Thay thế JSON array cũ — cho phép add/remove repos động.
+Each row = 1 git repo in the project. Replaces the old JSON array — allows dynamic add/remove of repos.
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
 | id | TEXT | PK | UUID v4 |
 | project_id | TEXT | NOT NULL, FK → projects.id | |
-| name | TEXT | NOT NULL | Tên repo (vd: `backend`). Unique trong project. |
-| git_url | TEXT | | Remote URL (vd: `git@github.com:team/backend.git`). NULL nếu linked local |
-| path | TEXT | NOT NULL | Absolute path (luôn dạng `{project_root}/repos/{name}`) |
-| default_branch | TEXT | NOT NULL, DEFAULT 'main' | Branch mặc định |
+| name | TEXT | NOT NULL | Repo name (e.g., `backend`). Unique within project. |
+| git_url | TEXT | | Remote URL (e.g., `git@github.com:team/backend.git`). NULL if linked local |
+| path | TEXT | NOT NULL | Absolute path (always in the form `{project_root}/repos/{name}`) |
+| default_branch | TEXT | NOT NULL, DEFAULT 'main' | Default branch |
 | link_mode | TEXT | NOT NULL, DEFAULT 'clone' | `clone` (app cloned) \| `symlink` (linked existing) |
 | status | TEXT | NOT NULL, DEFAULT 'ready' | `cloning` \| `ready` \| `error` |
-| added_by | TEXT | NOT NULL, FK → users.id | Ai thêm repo |
+| added_by | TEXT | NOT NULL, FK → users.id | Who added the repo |
 | created_at | INTEGER | NOT NULL, DEFAULT unixepoch() | |
 
 **Index**: `idx_repos_project` on (project_id)
-**Unique**: (project_id, name) — không 2 repos cùng tên trong 1 project
+**Unique**: (project_id, name) — no 2 repos with the same name in 1 project
 
 ---
 
@@ -236,13 +236,13 @@ Mỗi row = 1 git repo trong project. Thay thế JSON array cũ — cho phép ad
 |--------|------|-------------|-------------|
 | id | TEXT | PK | UUID v4 |
 | project_id | TEXT | NOT NULL, FK → projects.id | |
-| user_id | TEXT | NOT NULL, FK → users.id | Ai capture |
-| text | TEXT | NOT NULL | Nội dung capture |
+| user_id | TEXT | NOT NULL, FK → users.id | Who captured |
+| text | TEXT | NOT NULL | Capture content |
 | status | TEXT | NOT NULL, DEFAULT 'pending' | `pending` \| `triaged` \| `deferred` \| `dismissed` |
-| triage_result | TEXT | | JSON: `{"type": "epic", "epic_bead_id": "bd-42"}` hoặc `{"type": "quick-fix", "commit": "abc123"}` |
+| triage_result | TEXT | | JSON: `{"type": "epic", "epic_bead_id": "bd-42"}` or `{"type": "quick-fix", "commit": "abc123"}` |
 | created_at | INTEGER | NOT NULL, DEFAULT unixepoch() | |
-| triaged_at | INTEGER | | Thời điểm triage |
-| triaged_by | TEXT | FK → users.id | Ai triage |
+| triaged_at | INTEGER | | Time of triage |
+| triaged_by | TEXT | FK → users.id | Who triaged |
 
 **Index**: `idx_captures_project_status` on (project_id, status)
 
@@ -250,17 +250,17 @@ Mỗi row = 1 git repo trong project. Thay thế JSON array cũ — cho phép ad
 
 ### epics
 
-Link giữa app và Beads Rust epic. Beads Rust giữ source of truth cho title, description, status. App DB giữ metadata cho UI + agent management.
+Link between the app and a Beads Rust epic. Beads Rust is the source of truth for title, description, status. App DB holds metadata for UI + agent management.
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
 | id | TEXT | PK | UUID v4 |
 | project_id | TEXT | NOT NULL, FK → projects.id | |
-| bead_epic_id | TEXT | NOT NULL | ID trong br (vd: `bd-42`). Source of truth là br. |
+| bead_epic_id | TEXT | NOT NULL | ID in br (e.g., `bd-42`). Source of truth is br. |
 | git_branches | TEXT | NOT NULL, DEFAULT '[]' | JSON: `[{"repo": "backend", "branch": "epic/auth-refactor"}]` |
-| ui_status | TEXT | NOT NULL, DEFAULT 'draft' | `draft` \| `ready` \| `in_progress` \| `in_review` \| `done` \| `cancelled` |
-| scope_analysis | TEXT | | JSON: kết quả auto-detect split (tokens, files, complexity) |
-| split_proposal | TEXT | | JSON: đề xuất Beads nếu scope quá lớn |
+| ui_status | TEXT | NOT NULL, DEFAULT 'blocked' | `blocked` \| `ready` \| `in_progress` \| `in_review` \| `done` \| `cancelled` |
+| scope_analysis | TEXT | | JSON: auto-detect split result (tokens, files, complexity) |
+| split_proposal | TEXT | | JSON: proposed Beads if scope is too large |
 | created_at | INTEGER | NOT NULL, DEFAULT unixepoch() | |
 | updated_at | INTEGER | NOT NULL, DEFAULT unixepoch() | |
 
@@ -270,22 +270,22 @@ Link giữa app và Beads Rust epic. Beads Rust giữ source of truth cho title,
 
 ### sessions
 
-Mỗi row = 1 lần spawn Claude CLI cho 1 Epic.
+Each row = 1 Claude CLI spawn for 1 Epic.
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
 | id | TEXT | PK | UUID v4 |
 | project_id | TEXT | NOT NULL, FK → projects.id | |
-| epic_id | TEXT | FK → epics.id | Linked Epic (optional cho ad-hoc sessions) |
-| user_id | TEXT | NOT NULL, FK → users.id | Ai spawn |
-| claude_session_id | TEXT | | UUID dùng cho `--session-id` / `-r` resume |
-| agent_mail_name | TEXT | | Tên agent trong Agent Mail (vd: "BlueLake") |
+| epic_id | TEXT | FK → epics.id | Linked Epic (optional for ad-hoc sessions) |
+| user_id | TEXT | NOT NULL, FK → users.id | Who spawned |
+| claude_session_id | TEXT | | UUID used for `--session-id` / `-r` resume |
+| agent_mail_name | TEXT | | Agent name in Agent Mail (e.g., "BlueLake") |
 | model | TEXT | NOT NULL, DEFAULT 'sonnet' | claude model alias |
 | status | TEXT | NOT NULL, DEFAULT 'queued' | `queued` \| `running` \| `waiting_input` \| `validation_failed` \| `completed` \| `failed` \| `cancelled` \| `detached` |
-| prompt | TEXT | NOT NULL | Prompt gửi cho claude (đã inject CM rules + CASS) |
-| pid | INTEGER | | OS process ID (cho kill) |
+| prompt | TEXT | NOT NULL | Prompt sent to claude (with injected CM rules + CASS) |
+| pid | INTEGER | | OS process ID (for kill) |
 | exit_code | INTEGER | | |
-| pr_url | TEXT | | URL của PR nếu đã tạo |
+| pr_url | TEXT | | PR URL if created |
 | pr_status | TEXT | | `pending_review` \| `changes_requested` \| `approved` \| `merged` |
 | started_at | INTEGER | | |
 | finished_at | INTEGER | | |
@@ -297,25 +297,25 @@ Mỗi row = 1 lần spawn Claude CLI cho 1 Epic.
 
 ### session_events
 
-Append-only log. Mỗi dòng NDJSON từ `claude --output-format=stream-json` = 1 row.
+Append-only log. Each NDJSON line from `claude --output-format=stream-json` = 1 row.
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
 | id | INTEGER | PK, AUTOINCREMENT | |
 | session_id | TEXT | NOT NULL, FK → sessions.id | |
 | event_type | TEXT | NOT NULL | `system` \| `assistant` \| `tool_use` \| `tool_result` \| `result` \| `error` |
-| data | TEXT | NOT NULL | Raw JSON line từ stream-json |
+| data | TEXT | NOT NULL | Raw JSON line from stream-json |
 | created_at | INTEGER | NOT NULL, DEFAULT unixepoch() | |
 
 **Index**: `idx_events_session` on (session_id)
 
-**Lưu ý**: Table này grow nhanh. Cần periodic cleanup cho sessions cũ (giữ 30 ngày, archive to file).
+**Note**: This table grows fast. Needs periodic cleanup for old sessions (keep 30 days, archive to file).
 
 ---
 
 ### agent_queue
 
-Queue cho sessions khi concurrency limit đầy.
+Queue for sessions when the concurrency limit is full.
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
@@ -323,13 +323,13 @@ Queue cho sessions khi concurrency limit đầy.
 | project_id | TEXT | NOT NULL, FK → projects.id | |
 | epic_id | TEXT | NOT NULL, FK → epics.id | |
 | user_id | TEXT | NOT NULL, FK → users.id | |
-| priority | INTEGER | NOT NULL, DEFAULT 2 | 0=critical, 4=low (match br priority) |
+| priority | INTEGER | NOT NULL, DEFAULT 2 | 0=critical, 4=low (matches br priority) |
 | prompt | TEXT | NOT NULL | |
 | model | TEXT | NOT NULL, DEFAULT 'sonnet' | |
 | status | TEXT | NOT NULL, DEFAULT 'queued' | `queued` \| `picked` \| `cancelled` |
-| position | INTEGER | NOT NULL | Thứ tự trong queue |
+| position | INTEGER | NOT NULL | Order in queue |
 | created_at | INTEGER | NOT NULL, DEFAULT unixepoch() | |
-| picked_at | INTEGER | | Khi được dequeue và spawn |
+| picked_at | INTEGER | | When dequeued and spawned |
 
 **Index**: `idx_queue_project_status` on (project_id, status, priority, position)
 
@@ -337,22 +337,22 @@ Queue cho sessions khi concurrency limit đầy.
 
 ### knowledge_rules
 
-CM rules managed qua UI bởi TechLead. Proxy tới CM MCP server.
+CM rules managed via UI by TechLead. Proxies to CM MCP server.
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
 | id | TEXT | PK | UUID v4 |
 | project_id | TEXT | NOT NULL, FK → projects.id | |
-| rule_text | TEXT | NOT NULL | Nội dung rule (vd: "Always use structured logging") |
+| rule_text | TEXT | NOT NULL | Rule content (e.g., "Always use structured logging") |
 | category | TEXT | NOT NULL, DEFAULT 'general' | `coding` \| `security` \| `testing` \| `architecture` \| `general` |
-| confidence | REAL | NOT NULL, DEFAULT 0.5 | 0.0–1.0, decay theo thời gian |
+| confidence | REAL | NOT NULL, DEFAULT 0.5 | 0.0–1.0, decays over time |
 | maturity | TEXT | NOT NULL, DEFAULT 'candidate' | `candidate` \| `established` \| `proven` \| `deprecated` |
-| source | TEXT | NOT NULL, DEFAULT 'manual' | `manual` (TechLead tạo) \| `auto` (synthesize từ review rejection) |
-| source_session_id | TEXT | FK → sessions.id | Session mà rule được tạo từ (nếu auto) |
-| approved_by | TEXT | FK → users.id | TechLead approve (required cho auto rules) |
-| helpful_count | INTEGER | NOT NULL, DEFAULT 0 | Số lần rule giúp ích |
-| harmful_count | INTEGER | NOT NULL, DEFAULT 0 | Số lần rule gây hại (4x weight) |
-| last_validated_at | INTEGER | | Lần cuối rule được confirm hữu ích |
+| source | TEXT | NOT NULL, DEFAULT 'manual' | `manual` (TechLead created) \| `auto` (synthesized from review rejection) |
+| source_session_id | TEXT | FK → sessions.id | Session the rule was created from (if auto) |
+| approved_by | TEXT | FK → users.id | TechLead approval (required for auto rules) |
+| helpful_count | INTEGER | NOT NULL, DEFAULT 0 | Number of times the rule was helpful |
+| harmful_count | INTEGER | NOT NULL, DEFAULT 0 | Number of times the rule was harmful (4x weight) |
+| last_validated_at | INTEGER | | Last time the rule was confirmed useful |
 | created_at | INTEGER | NOT NULL, DEFAULT unixepoch() | |
 | updated_at | INTEGER | NOT NULL, DEFAULT unixepoch() | |
 
@@ -376,7 +376,7 @@ CM rules managed qua UI bởi TechLead. Proxy tới CM MCP server.
 
 ### notifications
 
-In-app notifications cho team members.
+In-app notifications for team members.
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
@@ -386,7 +386,7 @@ In-app notifications cho team members.
 | type | TEXT | NOT NULL | `agent_complete` \| `pr_ready` \| `review_needed` \| `question_waiting` \| `merge_complete` |
 | title | TEXT | NOT NULL | Notification title |
 | body | TEXT | | Detail text |
-| link | TEXT | | Deep link trong UI (vd: `/projects/abc/epics/def`) |
+| link | TEXT | | Deep link in UI (e.g., `/projects/abc/epics/def`) |
 | read | INTEGER | NOT NULL, DEFAULT 0 | |
 | created_at | INTEGER | NOT NULL, DEFAULT unixepoch() | |
 
@@ -400,7 +400,7 @@ In-app notifications cho team members.
 |--------|------|-------------|-------------|
 | id | INTEGER | PK, AUTOINCREMENT | |
 | project_id | TEXT | NOT NULL, FK → projects.id | |
-| user_id | TEXT | FK → users.id | NULL cho system actions |
+| user_id | TEXT | FK → users.id | NULL for system actions |
 | action | TEXT | NOT NULL | `capture_created` \| `epic_created` \| `session_started` \| `session_completed` \| `pr_created` \| `pr_merged` \| `rule_created` \| `bead_status_changed` |
 | details | TEXT | | JSON blob (action-specific) |
 | created_at | INTEGER | NOT NULL, DEFAULT unixepoch() | |
@@ -411,7 +411,7 @@ In-app notifications cho team members.
 
 ## Beads Rust Schema (Reference Only — managed by `br`)
 
-Không modify trực tiếp. Interact qua `br` CLI.
+Do not modify directly. Interact via `br` CLI.
 
 | Entity | Key Fields | Notes |
 |--------|-----------|-------|
@@ -429,6 +429,6 @@ Không modify trực tiếp. Interact qua `br` CLI.
 ## Migration Strategy
 
 - Drizzle ORM auto-migrate on server startup
-- `drizzle-kit generate` cho migration files
+- `drizzle-kit generate` for migration files
 - Migrations stored in `drizzle/migrations/`
 - No down migrations (append-only schema evolution)

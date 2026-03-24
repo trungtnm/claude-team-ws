@@ -4,54 +4,45 @@
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  Header: Logo │ Project Selector │ Search │ 🔔 │ Avatar ▼   │
+│  CT │ claude-team-ws ▼ │ Board│Captures│Agents│Graph│Settings│ [+ Capture ⌘J] 🔔 TT │
 ├──────────────────────────────────────────────────────────────┤
-│ ⚠ AGENT NEEDS INPUT ─ "Which search provider?" ─ [Answer] │ ← Alert Bar (khi có agent waiting)
-├──────┬───────────────────────────────────────────────────────┤
-│      │                                                       │
-│  S   │              Main Content Area                        │
-│  i   │                                                       │
-│  d   │   (changes based on active page)                      │
-│  e   │                                                       │
-│  b   │                                                       │
-│  a   │                                                       │
-│  r   │                                                       │
-│      │                                                       │
-│  📋  │                                                       │
-│  🤖  │                                                       │
-│  📊  │                                                       │
-│  📜  │                                                       │
-│  ⚙   │                                                       │
-│      │                                                       │
-├──────┤                                                       │
-│ Cap- │                                                       │
-│ ture │                                                       │
-│ In-  │                                                       │
-│ box  │                                                       │
-└──────┴───────────────────────────────────────────────────────┘
+│ ⚠ AGENT NEEDS INPUT — "Which search provider?" — [Answer] [✕]│
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│              Main Content Area (full width)                  │
+│              (changes based on active page)                  │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
 ```
+
+**Header Navigation:**
+- **Logo (CT)** + Project selector dropdown
+- **Nav tabs:** Board | Captures | Agents | Graph | Settings
+- **Actions:** [+ Capture ⌘J] CTA button, notification bell (🔔), user avatar (initials)
+
+---
 
 ### Global Agent Alert Bar
 
-Khi bất kỳ agent nào trong project đang `waiting_input` (AskUserQuestion), một alert bar đỏ/amber xuất hiện **dưới header, trên toàn bộ content area**. Alert bar:
+When any agent in the project is in `waiting_input` state (AskUserQuestion), a red/amber alert bar appears **below the header, spanning the full content width**. Alert bar behavior:
 
-- **Luôn visible** bất kể user đang ở page nào (Board, Agents, Graph...)
-- **Pulsing animation** (CSS `animate-pulse`) để nổi bật — agent đang bị block, chờ human
-- **Hiển thị**: Agent name + câu hỏi (truncated) + [Answer] button
-- **Click [Answer]** → mở AskUserQuestion modal (hoặc navigate tới agent stream)
-- **Nếu nhiều agents chờ** → hiện count: "2 agents need input" + dropdown list
-- **Auto-dismiss** khi question được trả lời (human hoặc auto-timeout)
-- **Kèm browser notification** (nếu user đã grant permission) + sound ping
+- **Always visible** regardless of which page the user is on (Board, Agents, Graph, etc.)
+- **Pulsing animation** (CSS `animate-pulse`) for visibility — the agent is blocked, waiting for human input
+- **Displays**: Agent name + question (truncated) + [Answer] button + [✕] close button
+- **Click [Answer]** → navigates to the agent's session page
+- **If multiple agents waiting** → shows count: "2 agents need input" + dropdown list
+- **Auto-dismiss** when the question is answered (human response or auto-timeout)
+- **Browser notification** (if user has granted permission) + sound ping
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ 🔴 AGENT WAITING ─ BlueLake asks: "Which search prov…"      │
-│                                          [Answer] [Dismiss]  │
+│ 🔴 AGENT WAITING — BlueLake asks: "Which search prov…"      │
+│                                          [Answer] [✕]        │
 └──────────────────────────────────────────────────────────────┘
-  ↑ Red/amber background, pulsing border, z-index trên cùng
+  ↑ Red/amber background, pulsing border, highest z-index
 ```
 
-Nếu 2+ agents chờ:
+If 2+ agents waiting:
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │ 🔴 2 AGENTS NEED INPUT                            [View All] │
@@ -59,15 +50,6 @@ Nếu 2+ agents chờ:
 │   RedStone: "Use JWT or session cookies?"          [Answer]  │
 └──────────────────────────────────────────────────────────────┘
 ```
-
-**Sidebar Navigation:**
-- 📋 Board (Epic Kanban)
-- 🤖 Agents (Sessions list + stream)
-- 📊 Graph (Dependency visualization)
-- 📜 Activity (Team feed)
-- ⚙ Settings (Project config, Users, Rules, Webhooks)
-
-**Capture Inbox**: Luôn hiện ở dưới sidebar. Collapsible. Badge count cho pending captures.
 
 ---
 
@@ -77,7 +59,7 @@ Nếu 2+ agents chờ:
 ┌──────────────────────────────────────────────────────────────┐
 │ Board ▼   │ Filter: [All Types ▼] [All Labels ▼] [Search…]  │
 ├──────────┬──────────┬──────────┬──────────┬─────────────────┤
-│  Draft   │  Ready   │ In Prog  │In Review │     Done        │
+│ Blocked  │  Ready   │ In Prog  │In Review │     Done        │
 │  (3)     │  (5)     │  (2)     │  (1)     │     (12)        │
 ├──────────┼──────────┼──────────┼──────────┼─────────────────┤
 │┌────────┐│┌────────┐│┌────────┐│┌────────┐│┌───────────────┐│
@@ -110,9 +92,9 @@ Nếu 2+ agents chờ:
 │ 5 beads (2/5 done)  │  ← Progress: nested beads count
 │ ████████░░░░  40%   │  ← Progress bar
 │                     │
-│ 🤖 running  @Bot    │  ← Agent status indicator (nếu active)
-│ ▶ Start             │  ← Action button (nếu ready)
-│ PR #45  🔍 review   │  ← PR status (nếu in_review)
+│ 🤖 running  @Bot    │  ← Agent status indicator (if active)
+│ ▶ Start             │  ← Action button (if ready)
+│ PR #45  🔍 review   │  ← PR status (if in review)
 │                     │
 │ @Minh  •  2h ago    │  ← Assignee + last updated
 │ backend, security   │  ← Labels
@@ -120,11 +102,11 @@ Nếu 2+ agents chờ:
 ```
 
 **Card states:**
-- Default: Drag-and-droppable giữa columns
-- `🤖 running`: Agent đang chạy. Click → mở Agent Stream panel
-- `❓ Q&A`: Agent đang chờ human input. Click → mở Q&A dialog
-- `▶ Start`: Ready to start. Click → Spawn dialog
-- `PR #45`: PR đã tạo. Click → mở Review Module
+- Default: Drag-and-droppable between columns
+- `🤖 running`: Agent is active. Click → opens Agent Stream panel
+- `❓ Q&A`: Agent is waiting for human input. Click → opens Q&A dialog
+- `▶ Start`: Ready to start. Click → opens Spawn dialog
+- `PR #45`: PR has been created. Click → opens Review Module
 
 ### Click Epic → Side Panel
 
@@ -167,7 +149,95 @@ Nếu 2+ agents chờ:
 
 ---
 
-## Page 2: Agent Sessions (`/projects/:id/agents`)
+## Page 2: Captures Page (`/captures`)
+
+### Layout
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Captures   │  Pending: 4  │  Deferred: 2  │  [+ Capture ⌘J] │
+├──────────────────────────────────────────────────────────────┤
+│ [Pending]  [Deferred]  [All]                                 │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │ ☐ Need rate limiting for public API endpoints          │  │
+│  │   @Trung • 5m ago • source: manual                     │  │
+│  │                         [→ Triage] [Defer ▶] [Dismiss] │  │
+│  └────────────────────────────────────────────────────────┘  │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │ ☐ Bug: login fails on Safari                          │  │
+│  │   @Minh • 1h ago • source: manual                      │  │
+│  │                         [→ Triage] [Defer ▶] [Dismiss] │  │
+│  └────────────────────────────────────────────────────────┘  │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │ ☐ Refactor DB connection pool                          │  │
+│  │   @Bot • 3h ago • source: agent                        │  │
+│  │                         [→ Triage] [Defer ▶] [Dismiss] │  │
+│  └────────────────────────────────────────────────────────┘  │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │ ☐ Add request logging middleware                       │  │
+│  │   @Trung • 4h ago • source: manual                     │  │
+│  │                         [→ Triage] [Defer ▶] [Dismiss] │  │
+│  └────────────────────────────────────────────────────────┘  │
+│                                                              │
+├──────────────────────────────────────────────────────────────┤
+│ ☑ 2 selected                     [Batch Triage] [Dismiss All]│
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Capture card actions:**
+- **[→ Triage]**: Opens the Triage dialog (4-phase AI-assisted flow)
+- **[Defer ▶]**: Moves to deferred list for later review
+- **[Dismiss]**: Removes the capture (with confirmation)
+- **Checkbox**: Select for batch operations
+
+### Triage Dialog (4-Phase AI Flow)
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Triage Capture                                       [✕]    │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Capture: "Need rate limiting for public API endpoints"      │
+│                                                              │
+│  ── Phase 1: Classify ─────────────────────────────────────  │
+│  Type:      [feature ▼]                                      │
+│  Priority:  [P1 ▼]                                           │
+│  Labels:    [backend, security, +]                           │
+│                                                              │
+│  ── Phase 2: Enrich (AI) ──────────────────────────────────  │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │ AI Suggestion:                                         │  │
+│  │ Title: "Add rate limiting to public API endpoints"     │  │
+│  │ Description: Add express-rate-limit middleware with     │  │
+│  │ Redis backend for all /api/* routes. Configure per-    │  │
+│  │ endpoint limits via config file.                       │  │
+│  │                                              [Accept]  │  │
+│  └────────────────────────────────────────────────────────┘  │
+│                                                              │
+│  ── Phase 3: Scope ────────────────────────────────────────  │
+│  Acceptance Criteria:                                        │
+│  ☐ Rate limiter middleware created                           │
+│  ☐ Redis integration for distributed limiting                │
+│  ☐ Per-endpoint configuration                                │
+│  ☐ Integration tests                                         │
+│  [+ Add criterion]                                           │
+│                                                              │
+│  ── Phase 4: Create Epic ──────────────────────────────────  │
+│  Repo:      [backend ▼]                                      │
+│  Assignee:  [Unassigned ▼]                                   │
+│                                                              │
+│                              [Cancel]  [Create Epic]         │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Page 3: Agent Sessions (`/projects/:id/agents`)
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -243,7 +313,7 @@ Nếu 2+ agents chờ:
 
 ### AskUserQuestion Dialog
 
-Khi agent cần human input (mode=pause):
+When an agent needs human input (mode=pause):
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -269,7 +339,7 @@ Khi agent cần human input (mode=pause):
 
 ---
 
-## Page 3: PR Review Module (`/projects/:id/review/:sessionId`)
+## Page 4: PR Review Module (`/projects/:id/review/:sessionId`)
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -311,7 +381,7 @@ Khi agent cần human input (mode=pause):
 
 ---
 
-## Page 4: Dependency Graph (`/projects/:id/graph`)
+## Page 5: Dependency Graph (`/projects/:id/graph`)
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -359,7 +429,7 @@ Khi agent cần human input (mode=pause):
 
 ## Settings: Repos Management (`/projects/:id/settings/repos`)
 
-Nằm trong Settings page. PM/TechLead quản lý repos.
+Located within the Settings page. PM/TechLead manages repositories.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -427,41 +497,6 @@ Nằm trong Settings page. PM/TechLead quản lý repos.
 
 ---
 
-## Page 5: Capture Inbox (Sidebar Component)
-
-```
-┌────────────────────┐
-│ 📥 Captures (4)    │
-│ [+ Capture...]     │
-├────────────────────┤
-│                    │
-│ ┌────────────────┐ │
-│ │ Cần rate limit │ │
-│ │ @Trung • 5m    │ │
-│ │ [→ Epic] [✗]   │ │
-│ └────────────────┘ │
-│                    │
-│ ┌────────────────┐ │
-│ │ Bug: login     │ │
-│ │ fails on Safari│ │
-│ │ @Minh • 1h     │ │
-│ │ [→ Epic] [✗]   │ │
-│ └────────────────┘ │
-│                    │
-│ ┌────────────────┐ │
-│ │ Refactor DB    │ │
-│ │ connection pool│ │
-│ │ @Bot • 3h      │ │
-│ │ [deferred]     │ │
-│ └────────────────┘ │
-│                    │
-│ ─── Deferred (2) ─│
-│                    │
-└────────────────────┘
-```
-
----
-
 ## Component Library (shadcn/ui)
 
 ### Required Components
@@ -482,7 +517,7 @@ Nằm trong Settings page. PM/TechLead quản lý repos.
 | Separator | ✅ | |
 | | | EpicCard (Kanban card) |
 | | | AgentStreamView (terminal) |
-| | | CaptureInbox (sidebar) |
+| | | CaptureCard (captures page) |
 | | | DiffViewer (PR review) |
 | | | GraphView (React Flow wrapper) |
 | | | ProgressBar (Epic progress) |
@@ -494,7 +529,7 @@ Nằm trong Settings page. PM/TechLead quản lý repos.
 |---------|---------|
 | `@dnd-kit/core` + `@dnd-kit/sortable` | Kanban drag-and-drop |
 | `@xyflow/react` | Dependency graph |
-| `@dagrejs/dagre` | Auto-layout cho DAG |
+| `@dagrejs/dagre` | Auto-layout for DAG |
 | `react-diff-viewer-continued` | PR diff rendering |
 | `react-router-dom` | Client-side routing |
 | `@tanstack/react-query` | Server state + cache |

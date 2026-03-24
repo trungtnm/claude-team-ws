@@ -1,15 +1,15 @@
-# CLAUDE.md (cho claude-team-ws project)
+# CLAUDE.md (for the claude-team-ws project)
 
-Đây là template CLAUDE.md sẽ được đặt ở root của project `claude-team-ws`.
+This is the CLAUDE.md template to be placed at the root of the `claude-team-ws` project.
 
 ---
 
 ```markdown
 # CLAUDE.md — claude-team-ws
 
-## Dự án
+## The Project
 
-Semi-Auto Epic-Driven Dev Workspace. Web app cho team dev quản lý Epics, spawn Claude Code agents, review PRs.
+Semi-Auto Epic-Driven Dev Workspace. Web app for the dev team to manage Epics, spawn Claude Code agents, review PRs.
 
 ## Stack
 
@@ -70,13 +70,13 @@ pnpm db:migrate   # Run migrations
 
 ## Vietnamese Language
 
-Tất cả Vietnamese text phải dùng dấu đầy đủ:
-- ✅ `Tạo phiên làm việc`
-- ❌ `Tao phien lam viec`
+All Vietnamese text must use full diacritical marks:
+- Correct: `Tạo phiên làm việc`
+- Incorrect: `Tao phien lam viec`
 
 ## Testing
 
 - Vitest for unit tests
-- Integration tests cho API routes
+- Integration tests for API routes
 - Test files co-located: `service.test.ts` next to `service.ts`
 ```
