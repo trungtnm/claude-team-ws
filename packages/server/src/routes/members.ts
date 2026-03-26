@@ -6,6 +6,7 @@ import { projectMembers, users } from '../db/schema.js'
 import { authenticate, requireRole } from '../middleware/auth.js'
 import { requireProjectMember } from '../middleware/project-access.js'
 import { emitToProject } from '../services/socket-manager.js'
+import { logError } from '../utils/log-error.js'
 
 // Mounted at /api/projects/:projectId/members
 const router: RouterType = Router({ mergeParams: true })
@@ -41,8 +42,7 @@ router.get('/', (req, res) => {
 
     res.json({ members: rows })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to list members'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('members', err) })
   }
 })
 
@@ -103,8 +103,7 @@ router.post('/', requireRole('pm', 'techlead'), (req, res) => {
     emitToProject(projectId, 'member:added', member)
     res.status(201).json({ member })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to add member'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('members', err) })
   }
 })
 
@@ -143,8 +142,7 @@ router.patch('/:userId', requireRole('pm', 'techlead'), (req, res) => {
     emitToProject(projectId, 'member:updated', { user_id: userId, role_override: parsed.data.role_override })
     res.json({ member: { ...existing, role_override: parsed.data.role_override } })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to update member'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('members', err) })
   }
 })
 
@@ -172,8 +170,7 @@ router.delete('/:userId', requireRole('pm', 'techlead'), (req, res) => {
     emitToProject(projectId, 'member:removed', { user_id: userId })
     res.status(204).send()
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to remove member'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('members', err) })
   }
 })
 

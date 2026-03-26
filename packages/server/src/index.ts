@@ -108,6 +108,18 @@ app.use('/api/notifications', authenticate, notificationsRouter)
 // Session-scoped routes (session ID in path, not project-scoped)
 app.use('/api/sessions', authenticate, sessionsRouter)
 
+// ─── Global Error Handler ────────────────────────────────────────────────────
+
+// Catch-all for unhandled route errors — MUST be registered after all routes
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('[ERROR]', err.stack || err.message)
+  const status = (err as unknown as { status?: number }).status ?? 500
+  res.status(status).json({
+    error: err.message,
+    ...(process.env.NODE_ENV !== 'production' && { stack: err.stack }),
+  })
+})
+
 // ─── HTTP Server + Socket.IO ─────────────────────────────────────────────────
 
 const httpServer = createServer(app)

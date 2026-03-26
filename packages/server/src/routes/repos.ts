@@ -8,6 +8,7 @@ import { authenticate, requireRole } from '../middleware/auth.js'
 import { requireProjectMember } from '../middleware/project-access.js'
 import { emitToProject } from '../services/socket-manager.js'
 import { GitService } from '../services/git-service.js'
+import { logError } from '../utils/log-error.js'
 
 // Mounted at /api/projects/:projectId/repos
 const router: RouterType = Router({ mergeParams: true })
@@ -30,8 +31,7 @@ router.get('/', (req, res) => {
     const rows = db.select().from(repos).where(eq(repos.project_id, projectId)).all()
     res.json({ repos: rows })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to list repos'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('repos', err) })
   }
 })
 
@@ -103,8 +103,7 @@ router.post('/', requireRole('pm', 'techlead'), async (req, res) => {
     emitToProject(projectId, 'repo:created', repo)
     res.status(201).json({ repo })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to add repo'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('repos', err) })
   }
 })
 
@@ -127,8 +126,7 @@ router.get('/:repoName/branches', async (req, res) => {
     const branches = await gitService.branches(repo.path)
     res.json({ branches })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to list branches'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('repos', err) })
   }
 })
 
@@ -157,8 +155,7 @@ router.post('/:repoName/pull', async (req, res) => {
     emitToProject(projectId, 'repo:pulled', { repo_id: repo.id, name: repo.name, ...result })
     res.json(result)
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to pull repo'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('repos', err) })
   }
 })
 
@@ -182,8 +179,7 @@ router.delete('/:repoName', requireRole('pm', 'techlead'), (req, res) => {
     emitToProject(projectId, 'repo:removed', { repo_id: repo.id, name: repoName })
     res.status(204).send()
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to remove repo'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('repos', err) })
   }
 })
 

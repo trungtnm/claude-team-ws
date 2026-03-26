@@ -9,6 +9,7 @@ import { authenticate, requireRole } from '../middleware/auth.js'
 import { requireProjectMember } from '../middleware/project-access.js'
 import { emitToProject } from '../services/socket-manager.js'
 import type { BeadsService } from '../services/beads-service.js'
+import { logError } from '../utils/log-error.js'
 
 interface CapturesRouterDeps {
   db: BetterSQLite3Database<typeof schemaTypes>
@@ -51,8 +52,7 @@ export function createCapturesRouter({ db, beadsService }: CapturesRouterDeps): 
       const rows = query.all()
       res.json({ captures: rows })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to list captures'
-      res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('captures', err) })
     }
   })
 
@@ -96,8 +96,7 @@ export function createCapturesRouter({ db, beadsService }: CapturesRouterDeps): 
       emitToProject(projectId, 'capture:created', capture)
       res.status(201).json({ capture })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create capture'
-      res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('captures', err) })
     }
   })
 
@@ -162,8 +161,7 @@ export function createCapturesRouter({ db, beadsService }: CapturesRouterDeps): 
       emitToProject(projectId, 'capture:updated', updated)
       res.json({ capture: updated })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to update capture'
-      res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('captures', err) })
     }
   })
 
@@ -188,8 +186,7 @@ export function createCapturesRouter({ db, beadsService }: CapturesRouterDeps): 
       emitToProject(projectId, 'capture:deleted', { id: captureId })
       res.status(204).send()
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to delete capture'
-      res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('captures', err) })
     }
   })
 

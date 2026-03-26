@@ -9,6 +9,7 @@ import { authenticate, requireRole } from '../middleware/auth.js'
 import { requireProjectMember } from '../middleware/project-access.js'
 import { emitToProject } from '../services/socket-manager.js'
 import type { BeadsService } from '../services/beads-service.js'
+import { logError } from '../utils/log-error.js'
 
 interface EpicsRouterDeps {
   db: BetterSQLite3Database<typeof schemaTypes>
@@ -91,8 +92,7 @@ export function createEpicsRouter({ db, beadsService }: EpicsRouterDeps): Router
 
       res.json({ epics: enriched })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to list epics'
-      res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('epics', err) })
     }
   })
 
@@ -169,8 +169,7 @@ export function createEpicsRouter({ db, beadsService }: EpicsRouterDeps): Router
       emitToProject(projectId, 'epic:created', enriched)
       res.status(201).json({ epic: enriched })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create epic'
-      res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('epics', err) })
     }
   })
 
@@ -225,8 +224,7 @@ export function createEpicsRouter({ db, beadsService }: EpicsRouterDeps): Router
 
       res.json({ epic: enriched })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to get epic'
-      res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('epics', err) })
     }
   })
 
@@ -333,8 +331,7 @@ export function createEpicsRouter({ db, beadsService }: EpicsRouterDeps): Router
       emitToProject(projectId, 'epic:updated', enriched)
       res.json({ epic: enriched })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to update epic'
-      res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('epics', err) })
     }
   })
 
@@ -376,8 +373,7 @@ export function createEpicsRouter({ db, beadsService }: EpicsRouterDeps): Router
       emitToProject(projectId, 'epic:updated', { id: epicId, scope_analysis: analysis })
       res.json({ analysis })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to analyze scope'
-      res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('epics', err) })
     }
   })
 
@@ -445,8 +441,7 @@ export function createEpicsRouter({ db, beadsService }: EpicsRouterDeps): Router
       emitToProject(projectId, 'epic:updated', enriched)
       res.json({ epic: enriched, beads: createdBeadIds })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to confirm split'
-      res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('epics', err) })
     }
   })
 

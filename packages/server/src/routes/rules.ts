@@ -7,6 +7,7 @@ import { knowledgeRules } from '../db/schema.js'
 import { authenticate, requireRole } from '../middleware/auth.js'
 import { requireProjectMember } from '../middleware/project-access.js'
 import { emitToProject } from '../services/socket-manager.js'
+import { logError } from '../utils/log-error.js'
 
 // Mounted at /api/projects/:projectId/rules
 const router: RouterType = Router({ mergeParams: true })
@@ -42,8 +43,7 @@ router.get('/', (req, res) => {
 
     res.json({ rules: rows })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to list rules'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('rules', err) })
   }
 })
 
@@ -88,8 +88,7 @@ router.post('/', requireRole('techlead'), (req, res) => {
     emitToProject(projectId, 'rule:created', rule)
     res.status(201).json({ rule })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to create rule'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('rules', err) })
   }
 })
 
@@ -140,8 +139,7 @@ router.patch('/:ruleId', requireRole('techlead'), (req, res) => {
     emitToProject(projectId, 'rule:updated', updated)
     res.json({ rule: updated })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to update rule'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('rules', err) })
   }
 })
 
@@ -166,8 +164,7 @@ router.delete('/:ruleId', requireRole('techlead'), (req, res) => {
     emitToProject(projectId, 'rule:deleted', { id: ruleId })
     res.status(204).send()
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to delete rule'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('rules', err) })
   }
 })
 

@@ -6,6 +6,7 @@ import { db } from '../db/index.js'
 import { projects, projectMembers } from '../db/schema.js'
 import { authenticate, requireRole } from '../middleware/auth.js'
 import { emitToProject } from '../services/socket-manager.js'
+import { logError } from '../utils/log-error.js'
 
 const router: RouterType = Router()
 
@@ -40,8 +41,7 @@ router.get('/', (req, res) => {
 
     res.json({ projects: rows })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to list projects'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('projects', err) })
   }
 })
 
@@ -98,8 +98,7 @@ router.post('/', requireRole('pm', 'techlead'), (req, res) => {
     emitToProject(id, 'project:created', project)
     res.status(201).json({ project })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to create project'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('projects', err) })
   }
 })
 
@@ -131,8 +130,7 @@ router.get('/:projectId', (req, res) => {
 
     res.json({ project })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to get project'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('projects', err) })
   }
 })
 
@@ -180,8 +178,7 @@ router.patch('/:projectId', requireRole('pm', 'techlead'), (req, res) => {
     emitToProject(projectId, 'project:updated', updated)
     res.json({ project: updated })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to update project'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('projects', err) })
   }
 })
 

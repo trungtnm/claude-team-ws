@@ -7,6 +7,7 @@ import { sessions, sessionEvents, projects, activityLog } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { requireProjectMember } from '../middleware/project-access.js'
 import { emitToProject, emitToSession } from '../services/socket-manager.js'
+import { logError } from '../utils/log-error.js'
 
 // Mounted at /api/projects/:projectId/sessions
 const router: RouterType = Router({ mergeParams: true })
@@ -43,8 +44,7 @@ router.get('/', (req, res) => {
 
     res.json({ sessions: rows })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to list sessions'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('sessions', err) })
   }
 })
 
@@ -118,8 +118,7 @@ router.post('/', (req, res) => {
     emitToProject(projectId, 'session:lifecycle', { session, action: 'created' })
     res.status(201).json({ session })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to create session'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('sessions', err) })
   }
 })
 
@@ -142,8 +141,7 @@ router.get('/:sessionId', (req, res) => {
 
     res.json({ session })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to get session'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('sessions', err) })
   }
 })
 
@@ -180,8 +178,7 @@ router.post('/:sessionId/cancel', (req, res) => {
     emitToSession(sessionId, 'session:cancelled', { session_id: sessionId })
     res.json({ session: updated })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to cancel session'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('sessions', err) })
   }
 })
 
@@ -216,8 +213,7 @@ router.post('/:sessionId/resume', (req, res) => {
     emitToProject(projectId, 'session:lifecycle', { session: updated, action: 'resumed' })
     res.json({ session: updated })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to resume session'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('sessions', err) })
   }
 })
 
@@ -261,8 +257,7 @@ router.post('/:sessionId/answer', (req, res) => {
 
     res.json({ status: 'answer_sent' })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to send answer'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('sessions', err) })
   }
 })
 
@@ -303,8 +298,7 @@ router.get('/:sessionId/events', (req, res) => {
 
     res.json({ events })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to list events'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('sessions', err) })
   }
 })
 

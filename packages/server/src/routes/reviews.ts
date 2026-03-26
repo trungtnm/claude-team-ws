@@ -7,6 +7,7 @@ import { authenticate, requireRole } from '../middleware/auth.js'
 import { requireProjectMember } from '../middleware/project-access.js'
 import { emitToProject } from '../services/socket-manager.js'
 import { GhService } from '../services/gh-service.js'
+import { logError } from '../utils/log-error.js'
 
 // Mounted at /api/projects/:projectId/reviews
 const router: RouterType = Router({ mergeParams: true })
@@ -36,8 +37,7 @@ router.get('/', (req, res) => {
 
     res.json({ reviews: rows })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to list reviews'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('reviews', err) })
   }
 })
 
@@ -81,8 +81,7 @@ router.get('/:sessionId', async (req, res) => {
       },
     })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to get review'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('reviews', err) })
   }
 })
 
@@ -128,8 +127,7 @@ router.post('/:sessionId/comment', async (req, res) => {
 
     res.status(201).json({ status: 'comment_added' })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to add comment'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('reviews', err) })
   }
 })
 
@@ -194,8 +192,7 @@ router.post('/:sessionId/merge', requireRole('pm', 'techlead'), async (req, res)
 
     res.json({ status: 'merged' })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to merge PR'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('reviews', err) })
   }
 })
 

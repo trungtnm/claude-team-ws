@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import { getJwtSecret, authenticate } from '../middleware/auth.js'
 import type * as schema from '../db/schema.js'
+import { logError } from '../utils/log-error.js'
 
 interface AuthRouterDeps {
   db: BetterSQLite3Database<typeof schema>
@@ -51,8 +52,7 @@ export function createAuthRouter({ db, users }: AuthRouterDeps): Router {
         },
       })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Login failed'
-      res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('auth', err) })
     }
   })
 

@@ -1,5 +1,6 @@
 import { Router, type Router as RouterType } from 'express'
 import { authenticate } from '../middleware/auth.js'
+import { logError } from '../utils/log-error.js'
 
 // Mounted at /api/mail
 const router: RouterType = Router()
@@ -26,8 +27,7 @@ router.get('/threads', async (req, res) => {
     const data = await response.json()
     res.json(data)
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to fetch threads'
-    res.status(502).json({ error: message })
+      res.status(502).json({ error: logError('mail', err) })
   }
 })
 
@@ -49,8 +49,7 @@ router.get('/threads/:threadId', async (req, res) => {
     const data = await response.json()
     res.json(data)
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to fetch thread'
-    res.status(502).json({ error: message })
+      res.status(502).json({ error: logError('mail', err) })
   }
 })
 

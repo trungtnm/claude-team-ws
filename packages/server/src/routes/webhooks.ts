@@ -7,6 +7,7 @@ import { webhookConfigs } from '../db/schema.js'
 import { authenticate, requireRole } from '../middleware/auth.js'
 import { requireProjectMember } from '../middleware/project-access.js'
 import { emitToProject } from '../services/socket-manager.js'
+import { logError } from '../utils/log-error.js'
 
 // Mounted at /api/projects/:projectId/webhooks
 const router: RouterType = Router({ mergeParams: true })
@@ -63,8 +64,7 @@ router.get('/', (req, res) => {
     const rows = db.select().from(webhookConfigs).where(eq(webhookConfigs.project_id, projectId)).all()
     res.json({ webhooks: rows.map(enrichWebhook) })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to list webhooks'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('webhooks', err) })
   }
 })
 
@@ -104,8 +104,7 @@ router.post('/', requireRole('pm', 'techlead'), (req, res) => {
     emitToProject(projectId, 'webhook:created', enriched)
     res.status(201).json({ webhook: enriched })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to create webhook'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('webhooks', err) })
   }
 })
 
@@ -159,8 +158,7 @@ router.patch('/:webhookId', requireRole('pm', 'techlead'), (req, res) => {
     emitToProject(projectId, 'webhook:updated', enriched)
     res.json({ webhook: enriched })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to update webhook'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('webhooks', err) })
   }
 })
 
@@ -188,8 +186,7 @@ router.delete('/:webhookId', requireRole('pm', 'techlead'), (req, res) => {
     emitToProject(projectId, 'webhook:deleted', { id: webhookId })
     res.status(204).send()
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to delete webhook'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('webhooks', err) })
   }
 })
 

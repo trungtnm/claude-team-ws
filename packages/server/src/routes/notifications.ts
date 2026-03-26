@@ -4,6 +4,7 @@ import { db } from '../db/index.js'
 import { notifications } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { emitToUser } from '../services/socket-manager.js'
+import { logError } from '../utils/log-error.js'
 
 // Mounted at /api/notifications (user-scoped, not project-scoped)
 const router: RouterType = Router()
@@ -42,8 +43,7 @@ router.get('/', (req, res) => {
 
     res.json({ notifications: enriched })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to list notifications'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('notifications', err) })
   }
 })
 
@@ -72,8 +72,7 @@ router.patch('/:notificationId', (req, res) => {
     emitToUser(user.id, 'notification:read', { id: notificationId })
     res.json({ notification: { ...existing, read: true } })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to update notification'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('notifications', err) })
   }
 })
 
@@ -90,8 +89,7 @@ router.post('/mark-all-read', (req, res) => {
     emitToUser(user.id, 'notification:all-read', {})
     res.json({ status: 'ok' })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to mark all as read'
-    res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('notifications', err) })
   }
 })
 

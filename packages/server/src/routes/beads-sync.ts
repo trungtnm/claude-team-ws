@@ -1,6 +1,7 @@
 import { Router, type Router as RouterType } from 'express'
 import { authenticate, requireRole } from '../middleware/auth.js'
 import type { BeadsService } from '../services/beads-service.js'
+import { logError } from '../utils/log-error.js'
 
 interface BeadsSyncRouterDeps {
   beadsService: BeadsService
@@ -24,11 +25,10 @@ export function createBeadsSyncRouter({ beadsService, projectRoot }: BeadsSyncRo
         open_count: Array.isArray(list) ? list.length : 0,
       })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Beads sync status check failed'
       res.json({
         status: 'error',
         project_root: projectRoot,
-        error: message,
+        error: logError('beads-sync', err),
       })
     }
   })
@@ -39,8 +39,7 @@ export function createBeadsSyncRouter({ beadsService, projectRoot }: BeadsSyncRo
       await beadsService.sync()
       res.json({ status: 'synced' })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to resume sync'
-      res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('beads-sync', err) })
     }
   })
 
@@ -50,8 +49,7 @@ export function createBeadsSyncRouter({ beadsService, projectRoot }: BeadsSyncRo
       await beadsService.sync()
       res.json({ status: 'synced' })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to force sync'
-      res.status(500).json({ error: message })
+      res.status(500).json({ error: logError('beads-sync', err) })
     }
   })
 
