@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Camera, Save, Trash2, Copy, Check, Download, ArrowRightLeft, RefreshCw, Loader2 } from 'lucide-react'
+import { Camera, Save, Copy, Check, Download, RefreshCw, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -88,9 +88,6 @@ export function ProjectTab() {
     toast.success('Generating export... Download will start shortly')
   }
 
-  const handleTransferOwnership = () => {
-    toast.info('Transfer ownership dialog coming soon')
-  }
 
   const handleRefreshIntegrations = () => {
     // TODO: Call GET /api/health/integrations when endpoint exists
@@ -299,37 +296,6 @@ export function ProjectTab() {
         </div>
       </section>
 
-      <Separator />
-
-      {/* Danger zone */}
-      <section className="space-y-4">
-        <h3 className="text-sm font-semibold text-error">Danger Zone</h3>
-        <div className="rounded-[var(--radius-lg)] border border-error/20 p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-ink">Transfer ownership</p>
-              <p className="text-xs text-ink-muted">Transfer this project to another team member. You will become a regular member.</p>
-            </div>
-            <Button variant="outline" size="sm" className="text-error border-error/30 hover:bg-error/10 gap-1.5" onClick={handleTransferOwnership}>
-              <ArrowRightLeft className="h-3.5 w-3.5" />
-              Transfer
-            </Button>
-          </div>
-
-          <Separator className="bg-error/10" />
-
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-ink">Delete project</p>
-              <p className="text-xs text-ink-muted">Permanently remove this project and all its data. This cannot be undone.</p>
-            </div>
-            <Button variant="outline" size="sm" className="text-error border-error/30 hover:bg-error/10" onClick={() => toast.error('Project deletion requires confirmation')}>
-              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-              Delete
-            </Button>
-          </div>
-        </div>
-      </section>
 
       {/* Save button */}
       <div className="flex items-center gap-3 pb-4">
