@@ -15,20 +15,34 @@ export function useLatestQuestion(sessionId: string | undefined, enabled = true)
       // Walk events in reverse to find the latest question
       for (let i = events.length - 1; i >= 0; i--) {
         const event = events[i]
-        const data = typeof event.data === 'string'
-          ? JSON.parse(event.data)
-          : event.data
+        let data: Record<string, unknown>
+        try {
+          data = typeof event.data === 'string'
+            ? JSON.parse(event.data)
+            : (event.data as Record<string, unknown>)
+        } catch {
+          continue
+        }
 
         // Check for question data in various event shapes
-        if (data?.questionData?.text) return data.questionData.text as string
-        if (data?.question?.text) return data.question.text as string
+        if (data?.questionData && (data.questionData as Record<string, unknown>)?.text) {
+          return (data.questionData as Record<string, unknown>).text as string
+        }
+        if (data?.question && (data.question as Record<string, unknown>)?.text) {
+          return (data.question as Record<string, unknown>).text as string
+        }
         if (data?.type === 'question' && data?.text) return data.text as string
 
         // AskUserQuestion events from Claude Agent SDK
         if (event.eventType === 'tool_use' && data?.toolName === 'AskUserQuestion') {
-          const input = typeof data.toolInput === 'string'
-            ? JSON.parse(data.toolInput)
-            : data.toolInput
+          let input: Record<string, unknown>
+          try {
+            input = typeof data.toolInput === 'string'
+              ? JSON.parse(data.toolInput)
+              : (data.toolInput as Record<string, unknown>)
+          } catch {
+            continue
+          }
           if (input?.question) return input.question as string
         }
       }

@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 
-const TEST_API_KEY = process.env.CTW_E2E_API_KEY || 'ctw-e2e-test-key-0000'
+const TEST_API_KEY = process.env.CTW_E2E_API_KEY ?? ''
 
 async function login(page: Page) {
   await page.goto('/login')
@@ -11,6 +11,7 @@ async function login(page: Page) {
 
 test.describe('Agents Page', () => {
   test.beforeEach(async ({ page }) => {
+    test.skip(!TEST_API_KEY, 'Set CTW_E2E_API_KEY to run authenticated E2E tests')
     await login(page)
     await page.getByRole('link', { name: 'Agents' }).click()
     await page.waitForURL('**/agents')
@@ -58,6 +59,7 @@ test.describe('Agents Page', () => {
 
 test.describe('Captures Page', () => {
   test.beforeEach(async ({ page }) => {
+    test.skip(!TEST_API_KEY, 'Set CTW_E2E_API_KEY to run authenticated E2E tests')
     await login(page)
     await page.getByRole('link', { name: 'Captures' }).click()
     await page.waitForURL('**/captures')
@@ -67,11 +69,7 @@ test.describe('Captures Page', () => {
     await expect(page.getByText('Captures')).toBeVisible()
   })
 
-  test('can open capture composer via keyboard shortcut', async ({ page }) => {
-    await page.keyboard.press('Meta+j')
-    // Composer dialog should appear
-    const composerVisible = await page.getByPlaceholder(/capture|idea/i).isVisible().catch(() => false)
-    // May or may not show depending on implementation details
-    expect(typeof composerVisible).toBe('boolean')
+  test('capture shortcut button is visible', async ({ page }) => {
+    await expect(page.getByRole('button', { name: /Capture/ })).toBeVisible()
   })
 })

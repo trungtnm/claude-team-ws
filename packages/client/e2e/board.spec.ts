@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 
-const TEST_API_KEY = process.env.CTW_E2E_API_KEY || 'ctw-e2e-test-key-0000'
+const TEST_API_KEY = process.env.CTW_E2E_API_KEY ?? ''
 
 async function login(page: Page) {
   await page.goto('/login')
@@ -12,6 +12,7 @@ async function login(page: Page) {
 
 test.describe('Board Page', () => {
   test.beforeEach(async ({ page }) => {
+    test.skip(!TEST_API_KEY, 'Set CTW_E2E_API_KEY to run authenticated E2E tests')
     await login(page)
   })
 

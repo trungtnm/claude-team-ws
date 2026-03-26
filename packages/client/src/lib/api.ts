@@ -3,6 +3,9 @@ import { ApiError } from './api-error'
 
 const BASE_URL = '/api'
 
+// Prevent multiple 401 redirects from parallel requests
+let redirecting = false
+
 interface RequestOptions extends Omit<RequestInit, 'body'> {
   body?: unknown
 }
@@ -34,6 +37,18 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   })
 
   if (!response.ok) {
+    // Global 401 handler — clear auth and redirect to login (deduped for parallel requests)
+    if (response.status === 401 && !path.startsWith('/auth/') && !redirecting) {
+      redirecting = true
+      localStorage.removeItem('auth_token')
+      window.location.href = '/login'
+      // Return a never-resolving promise to prevent error toasts during navigation
+      return new Promise<T>(() => {})
+    }
+    if (redirecting) {
+      return new Promise<T>(() => {})
+    }
+
     const errorBody = await response.json().catch(() => ({
       error: response.statusText,
     }))

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-const TEST_API_KEY = process.env.CTW_E2E_API_KEY || 'ctw-e2e-test-key-0000'
+const TEST_API_KEY = process.env.CTW_E2E_API_KEY ?? ''
 
 test.describe('Authentication', () => {
   test('redirects unauthenticated users to login', async ({ page }) => {
@@ -23,6 +23,7 @@ test.describe('Authentication', () => {
   })
 
   test('successful login redirects to board', async ({ page }) => {
+    test.skip(!TEST_API_KEY, 'Set CTW_E2E_API_KEY to run authenticated E2E tests')
     await page.goto('/login')
     await page.getByPlaceholder('ctw-').fill(TEST_API_KEY)
     await page.getByRole('button', { name: 'Sign in' }).click()
@@ -31,6 +32,7 @@ test.describe('Authentication', () => {
   })
 
   test('authenticated user can access board directly', async ({ page }) => {
+    test.skip(!TEST_API_KEY, 'Set CTW_E2E_API_KEY to run authenticated E2E tests')
     // Login first
     await page.goto('/login')
     await page.getByPlaceholder('ctw-').fill(TEST_API_KEY)

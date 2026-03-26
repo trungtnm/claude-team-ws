@@ -3,11 +3,11 @@ import { eq } from 'drizzle-orm'
 import { db, sqlite } from './index.js'
 import { users, projects, projectMembers } from './schema.js'
 
-// E2E test key: deterministic so Playwright tests can authenticate
-const E2E_TEST_KEY = process.env.CTW_E2E_API_KEY || 'ctw-e2e-test-key-0000'
+// Admin key: random per seed unless CTW_E2E_API_KEY is explicitly set for E2E tests
+const adminApiKey = process.env.CTW_E2E_API_KEY || `ctw-${nanoid(16)}`
 
 const DEFAULT_USERS = [
-  { id: 'usr_admin', name: 'Trung Tran', email: 'trung@team.local', role: 'techlead' as const, api_key: E2E_TEST_KEY },
+  { id: 'usr_admin', name: 'Trung Tran', email: 'trung@team.local', role: 'techlead' as const, api_key: adminApiKey },
   { id: 'usr_pm', name: 'Minh Nguyen', email: 'minh@team.local', role: 'pm' as const, api_key: `ctw-${nanoid(16)}` },
   { id: 'usr_dev1', name: 'Hoa Le', email: 'hoa@team.local', role: 'dev' as const, api_key: `ctw-${nanoid(16)}` },
   { id: 'usr_dev2', name: 'Khoa Pham', email: 'khoa@team.local', role: 'dev' as const, api_key: `ctw-${nanoid(16)}` },

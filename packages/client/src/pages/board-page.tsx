@@ -111,7 +111,7 @@ export function BoardPage() {
           <h1 className="text-lg font-semibold text-ink md:text-xl">Epic Board</h1>
           <FilterBar epics={epics} />
         </div>
-        <Button size="sm" className="gap-2 md:size-default" onClick={() => setCreateDialogOpen(true)}>
+        <Button size="sm" className="gap-2" onClick={() => setCreateDialogOpen(true)}>
           <Plus className="h-4 w-4" />
           <span className="hidden sm:inline">Epic</span>
         </Button>
