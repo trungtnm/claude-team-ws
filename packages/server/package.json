@@ -13,6 +13,7 @@
     "test:watch": "NODE_ENV=test vitest"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.84",
     "better-sqlite3": "^11.7.0",
     "cookie": "^1.1.1",
     "cookie-parser": "^1.4.0",

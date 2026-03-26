@@ -7,6 +7,7 @@ import { sessions, sessionEvents, projects, activityLog } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { requireProjectMember } from '../middleware/project-access.js'
 import { emitToProject, emitToSession } from '../services/socket-manager.js'
+import { getSessionRunner } from '../services/session-runner.js'
 import { logError } from '../utils/log-error.js'
 
 // Mounted at /api/projects/:projectId/sessions
@@ -167,15 +168,23 @@ router.post('/:sessionId/cancel', (req, res) => {
       return
     }
 
-    const now = Math.floor(Date.now() / 1000)
-    db.update(sessions)
-      .set({ status: 'cancelled', finished_at: now })
-      .where(eq(sessions.id, sessionId))
-      .run()
+    // Try to cancel via session runner (which also aborts the SDK process)
+    const runner = getSessionRunner()
+    const cancelledViaRunner = runner?.cancelSession(sessionId)
+
+    if (!cancelledViaRunner) {
+      // Session not managed by runner (e.g., still queued) — update DB directly
+      const now = Math.floor(Date.now() / 1000)
+      db.update(sessions)
+        .set({ status: 'cancelled', finished_at: now })
+        .where(eq(sessions.id, sessionId))
+        .run()
+
+      emitToProject(projectId, 'session:lifecycle', { session: { ...session, status: 'cancelled', finished_at: now }, action: 'cancelled' })
+      emitToSession(sessionId, 'session:cancelled', { session_id: sessionId })
+    }
 
     const updated = db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
-    emitToProject(projectId, 'session:lifecycle', { session: updated, action: 'cancelled' })
-    emitToSession(sessionId, 'session:cancelled', { session_id: sessionId })
     res.json({ session: updated })
   } catch (err) {
       res.status(500).json({ error: logError('sessions', err) })
@@ -249,11 +258,17 @@ router.post('/:sessionId/answer', (req, res) => {
       return
     }
 
-    // Emit the answer to the session room for the agent runner to pick up
-    emitToSession(sessionId, 'session:answer', {
-      session_id: sessionId,
-      answer: parsed.data.answer,
-    })
+    // Resolve the pending answer in the session runner
+    const runner = getSessionRunner()
+    const answered = runner?.answerQuestion(sessionId, parsed.data.answer)
+
+    if (!answered) {
+      // Fallback: emit via Socket.IO for legacy/external runners
+      emitToSession(sessionId, 'session:answer', {
+        session_id: sessionId,
+        answer: parsed.data.answer,
+      })
+    }
 
     res.json({ status: 'answer_sent' })
   } catch (err) {

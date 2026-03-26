@@ -15,6 +15,7 @@ import { globalLimiter, authLimiter } from './middleware/rate-limit.js'
 import { initSocketIO, setUserLookup } from './services/socket-manager.js'
 import { BeadsService } from './services/beads-service.js'
 import { BvService } from './services/bv-service.js'
+import { initSessionRunner, stopSessionRunner } from './services/session-runner.js'
 
 // Routes
 import healthRouter from './routes/health.js'
@@ -121,6 +122,22 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 
 const httpServer = createServer(app)
 initSocketIO(httpServer)
+
+// Start session runner after Socket.IO is initialized
+initSessionRunner(PROJECT_ROOT)
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('[Server] SIGTERM received — shutting down gracefully')
+  stopSessionRunner()
+  httpServer.close()
+})
+
+process.on('SIGINT', () => {
+  console.log('[Server] SIGINT received — shutting down gracefully')
+  stopSessionRunner()
+  httpServer.close()
+})
 
 httpServer.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`)
