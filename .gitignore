@@ -36,8 +36,6 @@ test-results/
 playwright-report/
 blob-report/
 
-# Old packages (nuked — rebuilding from scratch)
-packages/
 
 # UI demo (untracked reference prototype)
 ui/
