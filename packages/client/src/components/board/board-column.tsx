@@ -1,3 +1,4 @@
+import { useDroppable } from '@dnd-kit/core'
 import { cn } from '@/lib/utils'
 import { EpicCard } from '@/components/board/epic-card'
 import type { BoardEpic as Epic, UiStatus } from '@/types'
@@ -8,9 +9,17 @@ interface BoardColumnProps {
   epics: Epic[]
 }
 
-export function BoardColumn({ label, epics }: BoardColumnProps) {
+export function BoardColumn({ columnId, label, epics }: BoardColumnProps) {
+  const { setNodeRef, isOver } = useDroppable({ id: columnId })
+
   return (
-    <div className="flex min-w-[240px] flex-col rounded-[var(--radius-lg)] border border-edge bg-surface-base/50 p-3">
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'flex min-w-[240px] flex-col rounded-[var(--radius-lg)] border border-edge bg-surface-base/50 p-3 transition-colors',
+        isOver && 'border-accent/60 bg-accent/5',
+      )}
+    >
       {/* Header */}
       <div className="mb-3 flex items-center gap-2">
         <h3 className="text-sm font-semibold text-ink-secondary">{label}</h3>

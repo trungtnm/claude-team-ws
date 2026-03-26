@@ -1,4 +1,5 @@
 import { ExternalLink } from 'lucide-react'
+import { useDraggable } from '@dnd-kit/core'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { PriorityBadge } from '@/components/board/priority-badge'
@@ -17,10 +18,16 @@ const typeColors: Record<string, string> = {
 
 interface EpicCardProps {
   epic: Epic
+  isDragOverlay?: boolean
 }
 
-export function EpicCard({ epic }: EpicCardProps) {
+export function EpicCard({ epic, isDragOverlay = false }: EpicCardProps) {
   const setSelectedEpicId = useBoardStore((s) => s.setSelectedEpicId)
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: epic.id,
+    data: { epic },
+    disabled: isDragOverlay,
+  })
   const { data: members = [] } = useMembers()
   const member = members.find((m) => m.userId === epic.assigneeId)
   const assignee = member
@@ -34,14 +41,18 @@ export function EpicCard({ epic }: EpicCardProps) {
 
   return (
     <button
+      ref={isDragOverlay ? undefined : setNodeRef}
       type="button"
       onClick={() => setSelectedEpicId(epic.id)}
+      {...(isDragOverlay ? {} : { ...listeners, ...attributes })}
       className={cn(
-        'w-full cursor-pointer rounded-[var(--radius-lg)] border p-3 text-left transition-all',
+        'w-full cursor-grab rounded-[var(--radius-lg)] border p-3 text-left transition-all',
         'hover:border-edge-hover hover:bg-surface-elevated/50',
         needsInput
           ? 'border-amber-500/40 bg-amber-500/5 shadow-[0_0_12px_rgba(245,158,11,0.08)]'
           : 'border-edge bg-surface-raised',
+        isDragging && 'opacity-30',
+        isDragOverlay && 'shadow-lg ring-2 ring-accent/50 cursor-grabbing',
       )}
     >
       {/* Top row: priority + type + assignee avatar (top-right) */}
