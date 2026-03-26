@@ -7,6 +7,7 @@
     "start:server": "pnpm --filter server start",
     "test": "pnpm --filter server test",
     "test:integration": "pnpm --filter server test:integration",
+    "test:e2e": "pnpm --filter client test:e2e",
     "db:generate": "pnpm --filter server db:generate",
     "db:migrate": "pnpm --filter server db:migrate",
     "docker:up": "cd docker && docker compose up -d",
