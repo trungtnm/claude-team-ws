@@ -10,11 +10,11 @@ import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { PriorityBadge } from '@/components/board/priority-badge'
-import { users } from '@/data/users'
+import { getInitials, getUserColor } from '@/lib/user-utils'
+import { useMembers } from '@/hooks/use-settings'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import type { Epic, Priority } from '@/data/epics'
-import type { User } from '@/data/users'
+import type { BoardEpic as Epic, Priority } from '@/types'
 
 const typeColors: Record<string, string> = {
   feature: 'text-blue-400 bg-blue-400/10',
@@ -60,7 +60,7 @@ interface EpicSidebarMetaProps {
   localStatus: string
   localPriority: Priority
   localType: string
-  localAssignee: User | undefined
+  localAssignee: { id: string; name: string; initials: string; color: string } | undefined
   localAssigneeId: string
   localLabels: string[]
   localDueDate: string
@@ -99,6 +99,7 @@ export function EpicSidebarMeta({
   onViewPR, onViewSession,
   sessions,
 }: EpicSidebarMetaProps) {
+  const { data: members = [] } = useMembers()
   return (
     <div className="w-64 shrink-0 border-l border-edge bg-surface-base overflow-y-auto p-4 space-y-4">
       {/* Status */}
@@ -167,11 +168,11 @@ export function EpicSidebarMeta({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
             <DropdownMenuLabel>Assign to</DropdownMenuLabel>
-            {users.map((u) => (
-              <DropdownMenuItem key={u.id} onClick={() => onAssigneeChange(u.id)}>
-                <div className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-semibold text-white mr-2" style={{ backgroundColor: u.color }}>{u.initials}</div>
+            {members.map((u) => (
+              <DropdownMenuItem key={u.userId} onClick={() => onAssigneeChange(u.userId)}>
+                <div className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-semibold text-white mr-2" style={{ backgroundColor: getUserColor(u.userId) }}>{getInitials(u.name)}</div>
                 {u.name}
-                {u.id === localAssigneeId && <span className="ml-auto text-[10px] text-accent">current</span>}
+                {u.userId === localAssigneeId && <span className="ml-auto text-[10px] text-accent">current</span>}
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />

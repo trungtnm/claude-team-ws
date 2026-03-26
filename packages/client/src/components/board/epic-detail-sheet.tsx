@@ -17,7 +17,8 @@ import { EpicSidebarMeta } from '@/components/board/epic-sidebar-meta'
 import { EpicFooterActions } from '@/components/board/epic-footer-actions'
 import { useBoardStore } from '@/stores/board-store'
 import { useEpicDetail, useUpdateEpic } from '@/hooks/use-epics'
-import { getUserById } from '@/data/users'
+import { getInitials, getUserColor } from '@/lib/user-utils'
+import { useMembers } from '@/hooks/use-settings'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -107,7 +108,11 @@ export function EpicDetailSheet() {
     }
   }, [epic?.id, epic?.uiStatus, epic?.priority, epic?.type, epic?.assigneeId, epic?.updatedAt])
 
-  const localAssignee = getUserById(localAssigneeId)
+  const { data: members = [] } = useMembers()
+  const localAssigneeMember = members.find((m) => m.userId === localAssigneeId)
+  const localAssignee = localAssigneeMember
+    ? { id: localAssigneeMember.userId, name: localAssigneeMember.name, initials: getInitials(localAssigneeMember.name), color: getUserColor(localAssigneeMember.userId) }
+    : undefined
 
   const progressPercent = epic && epic.beadProgress.total > 0
     ? (epic.beadProgress.done / epic.beadProgress.total) * 100 : 0
@@ -167,7 +172,7 @@ export function EpicDetailSheet() {
     if (!epic) return
     const prev = localAssigneeId
     setLocalAssigneeId(userId)
-    const u = getUserById(userId)
+    const u = members.find((m) => m.userId === userId)
     updateEpic.mutate(
       { epicId: epic.id, beadAssignee: userId },
       {

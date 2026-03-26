@@ -2,9 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { epicsApi } from '@/lib/resources'
 import { queryKeys } from '@/lib/query-keys'
 import { useProject } from '@/providers/project-provider'
-import type { Epic as ServerEpic } from '@/types'
-import type { Epic, UiStatus, Priority, EpicType } from '@/data/epics'
-import type { Bead, BeadStatus, BeadType } from '@/data/beads'
+import type { Epic as ServerEpic, BoardEpic as Epic, UiStatus, Priority, EpicType, Bead, BeadStatus, BeadType } from '@/types'
 
 // ─── Server → UI transforms ────────────────────────────────────────────────────
 

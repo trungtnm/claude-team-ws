@@ -16,8 +16,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
-import { getBeadById, type Bead, type BeadStatus } from '@/data/beads'
-import { getUserById, users } from '@/data/users'
+import type { Bead, BeadStatus } from '@/types'
+import { getInitials, getUserColor } from '@/lib/user-utils'
+import { useMembers } from '@/hooks/use-settings'
 
 const statusConfig: Record<BeadStatus, { icon: typeof Circle; className: string; label: string }> = {
   done: { icon: CheckCircle2, className: 'text-green-400 bg-green-400/10', label: 'Done' },
@@ -41,6 +42,7 @@ const typeConfig: Record<string, string> = {
 
 interface BeadDetailDialogProps {
   bead: Bead | null
+  allBeads?: Bead[]
   open: boolean
   onOpenChange: (open: boolean) => void
 }
@@ -51,19 +53,23 @@ function formatTimestamp(epoch: number): string {
   })
 }
 
-export function BeadDetailDialog({ bead, open, onOpenChange }: BeadDetailDialogProps) {
+export function BeadDetailDialog({ bead, allBeads = [], open, onOpenChange }: BeadDetailDialogProps) {
   const [commentText, setCommentText] = useState('')
   const [showComments, setShowComments] = useState(false)
+  const { data: members = [] } = useMembers()
 
   if (!bead) return null
 
   const status = statusConfig[bead.status]
   const priority = priorityConfig[bead.priority] || priorityConfig[3]
-  const assignee = bead.assigneeId ? getUserById(bead.assigneeId) : undefined
+  const assigneeMember = bead.assigneeId ? members.find((m) => m.userId === bead.assigneeId) : undefined
+  const assignee = assigneeMember
+    ? { name: assigneeMember.name, initials: getInitials(assigneeMember.name), color: getUserColor(assigneeMember.userId) }
+    : undefined
   const StatusIcon = status.icon
 
   const dependencies = bead.dependencies.map((depId) => {
-    const dep = getBeadById(depId)
+    const dep = allBeads.find((b) => b.id === depId)
     return dep ? { id: depId, title: dep.title, status: dep.status } : { id: depId, title: depId, status: 'open' as BeadStatus }
   })
 
@@ -244,10 +250,10 @@ export function BeadDetailDialog({ bead, open, onOpenChange }: BeadDetailDialogP
             </DropdownMenuTrigger>
             <DropdownMenuContent>
               <DropdownMenuLabel>Assign to</DropdownMenuLabel>
-              {users.map((u) => (
-                <DropdownMenuItem key={u.id} onClick={() => handleAssign(u.name)}>
-                  <div className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-semibold text-white mr-2" style={{ backgroundColor: u.color }}>
-                    {u.initials}
+              {members.map((u) => (
+                <DropdownMenuItem key={u.userId} onClick={() => handleAssign(u.name)}>
+                  <div className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-semibold text-white mr-2" style={{ backgroundColor: getUserColor(u.userId) }}>
+                    {getInitials(u.name)}
                   </div>
                   {u.name}
                 </DropdownMenuItem>

@@ -7,7 +7,7 @@ import { EpicDetailSheet } from '@/components/board/epic-detail-sheet'
 import { EpicCreateDialog } from '@/components/board/epic-create-dialog'
 import { useBoardStore } from '@/stores/board-store'
 import { useEpics } from '@/hooks/use-epics'
-import { columns } from '@/data/epics'
+import { boardColumns as columns } from '@/types'
 
 export function BoardPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false)

@@ -4,7 +4,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
-import type { Epic } from '@/data/epics'
+import type { BoardEpic as Epic } from '@/types'
 
 interface EpicFooterActionsProps {
   epic: Epic

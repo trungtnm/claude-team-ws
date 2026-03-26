@@ -2,7 +2,12 @@ import { useQuery } from '@tanstack/react-query'
 import { graphApi } from '@/lib/resources'
 import { queryKeys } from '@/lib/query-keys'
 import { useProject } from '@/providers/project-provider'
-import type { GraphNodeData, GraphEdge } from '@/data/graph-nodes'
+import type { GraphNodeData } from '@/types'
+
+export interface GraphEdgeUI {
+  source: string
+  target: string
+}
 
 // ─── bv --robot-graph JSON shape ────────────────────────────────────────────────
 
@@ -93,7 +98,7 @@ function computeRoles(
 
 function transformGraph(bvData: BvGraphResponse): {
   nodes: GraphNodeData[]
-  edges: GraphEdge[]
+  edges: GraphEdgeUI[]
 } {
   const { nodes: bvNodes, edges: bvEdges } = bvData.adjacency
   const roles = computeRoles(bvNodes, bvEdges)
@@ -107,7 +112,7 @@ function transformGraph(bvData: BvGraphResponse): {
     type: n.labels?.[0] ?? 'task',
   }))
 
-  const edges: GraphEdge[] = bvEdges.map((e) => ({
+  const edges: GraphEdgeUI[] = bvEdges.map((e) => ({
     source: e.from,
     target: e.to,
   }))

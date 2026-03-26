@@ -1,4 +1,4 @@
-import type { GraphNodeData } from '@/data/graph-nodes'
+import type { GraphNodeData } from '@/types'
 
 interface GraphLegendProps {
   nodes: GraphNodeData[]

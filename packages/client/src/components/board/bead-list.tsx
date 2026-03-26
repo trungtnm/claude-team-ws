@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { CheckCircle2, Circle, Loader2, Ban, ChevronDown, ChevronRight } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import type { Bead, BeadStatus } from '@/data/beads'
-import { getUserById } from '@/data/users'
+import type { Bead, BeadStatus } from '@/types'
+import { getInitials, getUserColor } from '@/lib/user-utils'
+import { useMembers } from '@/hooks/use-settings'
 import { BeadDetailDialog } from '@/components/board/bead-detail-dialog'
 
 const statusOrder: BeadStatus[] = ['in_progress', 'blocked', 'open', 'done']
@@ -81,6 +82,7 @@ export function BeadList({ beads: allBeads }: BeadListProps) {
 
       <BeadDetailDialog
         bead={selectedBead}
+        allBeads={allBeads}
         open={selectedBead !== null}
         onOpenChange={(open) => !open && setSelectedBead(null)}
       />
@@ -91,7 +93,11 @@ export function BeadList({ beads: allBeads }: BeadListProps) {
 function BeadRow({ bead, onClick, allBeads }: { bead: Bead; onClick: () => void; allBeads: Bead[] }) {
   const config = statusIcons[bead.status]
   const Icon = config.icon
-  const assignee = bead.assigneeId ? getUserById(bead.assigneeId) : undefined
+  const { data: members = [] } = useMembers()
+  const member = bead.assigneeId ? members.find((m) => m.userId === bead.assigneeId) : undefined
+  const assignee = member
+    ? { name: member.name, initials: getInitials(member.name), color: getUserColor(member.userId) }
+    : undefined
 
   const blockerTitle =
     bead.status === 'blocked' && bead.dependencies.length > 0

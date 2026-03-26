@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { Handle, Position } from '@xyflow/react'
-import type { GraphNodeData } from '@/data/graph-nodes'
+import type { GraphNodeData } from '@/types'
 
 const roleBorderColors: Record<GraphNodeData['role'], string> = {
   critical: 'border-red-500',

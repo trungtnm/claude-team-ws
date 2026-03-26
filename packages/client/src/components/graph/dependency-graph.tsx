@@ -13,7 +13,8 @@ import '@xyflow/react/dist/style.css'
 
 import { GraphNode } from '@/components/graph/graph-node'
 import { GraphControls } from '@/components/graph/graph-controls'
-import type { GraphNodeData, GraphEdge as GraphEdgeData } from '@/data/graph-nodes'
+import type { GraphNodeData } from '@/types'
+import type { GraphEdgeUI as GraphEdgeData } from '@/hooks/use-graph'
 
 const NODE_WIDTH = 180
 const NODE_HEIGHT = 90

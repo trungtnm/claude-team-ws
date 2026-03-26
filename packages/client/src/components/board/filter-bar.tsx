@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useBoardStore } from '@/stores/board-store'
-import type { Epic } from '@/data/epics'
+import type { BoardEpic as Epic } from '@/types'
 
 interface FilterBarProps {
   epics: Epic[]

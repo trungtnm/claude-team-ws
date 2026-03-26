@@ -269,3 +269,81 @@ export interface PrReviewApiResponse {
     diff: string | null
   }
 }
+
+// ─── Board UI Types (flat shapes used by board components) ──────────────────
+
+export type Priority = 0 | 1 | 2 | 3
+
+export type EpicType = 'feature' | 'bug' | 'task' | 'docs'
+
+/** Flat epic shape used by board components (produced by toUIEpic in use-epics hook) */
+export interface BoardEpic {
+  id: string
+  beadId: string
+  title: string
+  description: string
+  uiStatus: UiStatus
+  priority: Priority
+  type: EpicType
+  labels: string[]
+  assigneeId: string
+  beadProgress: { total: number; done: number }
+  agentStatus?: 'running' | 'waiting_input' | null
+  activeSessionId?: string
+  prUrl?: string
+  prNumber?: number
+  prStatus?: 'pending_review' | 'changes_requested' | 'approved' | 'merged'
+  gitBranch?: string
+  createdAt: number
+  updatedAt: number
+  acceptanceCriteria?: string[]
+  sourceCaptures?: {
+    text: string
+    author: string
+    createdAt: number
+    attachments?: { name: string; type: string; size: string; preview?: string }[]
+  }[]
+}
+
+// ─── Bead UI Types ──────────────────────────────────────────────────────────
+
+export type BeadStatus = 'open' | 'in_progress' | 'done' | 'blocked'
+
+export type BeadType = 'task' | 'bug' | 'spike'
+
+export interface Bead {
+  id: string
+  epicId: string
+  title: string
+  description: string
+  status: BeadStatus
+  priority: number
+  type: BeadType
+  assigneeId?: string
+  labels: string[]
+  dependencies: string[]
+  createdAt: number
+  updatedAt: number
+}
+
+// ─── Graph UI Types ─────────────────────────────────────────────────────────
+
+export interface GraphNodeData {
+  id: string
+  title: string
+  status: 'open' | 'in_progress' | 'ready' | 'done'
+  role: 'critical' | 'bottleneck' | 'ready' | 'normal'
+  priority: number
+  assignee?: string
+  type: string
+}
+
+// ─── Board Constants ────────────────────────────────────────────────────────
+
+export const boardColumns: { id: UiStatus; label: string }[] = [
+  { id: 'blocked', label: 'Blocked' },
+  { id: 'ready', label: 'Ready' },
+  { id: 'in_progress', label: 'In Progress' },
+  { id: 'in_review', label: 'In Review' },
+  { id: 'done', label: 'Done' },
+]

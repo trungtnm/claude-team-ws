@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils'
 import { EpicCard } from '@/components/board/epic-card'
-import type { Epic, UiStatus } from '@/data/epics'
+import type { BoardEpic as Epic, UiStatus } from '@/types'
 
 interface BoardColumnProps {
   columnId: UiStatus

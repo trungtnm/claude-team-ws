@@ -1,6 +1,6 @@
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import type { Priority } from '@/data/epics'
+import type { Priority } from '@/types'
 
 const priorityConfig: Record<Priority, { className: string; label: string }> = {
   0: { className: 'bg-red-500/15 text-red-400', label: 'P0' },

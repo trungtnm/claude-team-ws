@@ -12,7 +12,8 @@ import {
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
-import { notifications as initialNotifications, type Notification } from '@/data/notifications'
+import { useNotifications, useMarkNotificationRead, useMarkAllNotificationsRead } from '@/hooks/use-notifications'
+import type { Notification } from '@/types'
 
 const typeIcons: Record<Notification['type'], typeof Bell> = {
   agent_complete: Bell,
@@ -24,22 +25,25 @@ const typeIcons: Record<Notification['type'], typeof Bell> = {
 
 export function NotificationDropdown() {
   const navigate = useNavigate()
-  const [items, setItems] = useState(initialNotifications)
+  const { data: items = [] } = useNotifications()
+  const markRead = useMarkNotificationRead()
+  const markAllRead = useMarkAllNotificationsRead()
   const [open, setOpen] = useState(false)
 
   const unreadCount = items.filter((n) => !n.read).length
 
   const handleMarkAllRead = () => {
-    setItems((prev) => prev.map((n) => ({ ...n, read: true })))
-    toast.success('All notifications marked as read')
+    markAllRead.mutate(undefined, {
+      onSuccess: () => toast.success('All notifications marked as read'),
+    })
   }
 
   const handleClickNotification = (notification: Notification) => {
-    setItems((prev) =>
-      prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n)),
-    )
+    if (!notification.read) {
+      markRead.mutate(notification.id)
+    }
     setOpen(false)
-    navigate(notification.link)
+    if (notification.link) navigate(notification.link)
   }
 
   return (

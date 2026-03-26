@@ -3,9 +3,10 @@ import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { PriorityBadge } from '@/components/board/priority-badge'
 import { useBoardStore } from '@/stores/board-store'
-import { getUserById } from '@/data/users'
+import { getInitials, getUserColor } from '@/lib/user-utils'
+import { useMembers } from '@/hooks/use-settings'
 import { formatDistanceToNow } from 'date-fns'
-import type { Epic } from '@/data/epics'
+import type { BoardEpic as Epic } from '@/types'
 
 const typeColors: Record<string, string> = {
   feature: 'text-blue-400 bg-blue-400/10',
@@ -20,7 +21,11 @@ interface EpicCardProps {
 
 export function EpicCard({ epic }: EpicCardProps) {
   const setSelectedEpicId = useBoardStore((s) => s.setSelectedEpicId)
-  const assignee = getUserById(epic.assigneeId)
+  const { data: members = [] } = useMembers()
+  const member = members.find((m) => m.userId === epic.assigneeId)
+  const assignee = member
+    ? { name: member.name, initials: getInitials(member.name), color: getUserColor(member.userId) }
+    : undefined
   const needsInput = epic.agentStatus === 'waiting_input'
   const progressPercent =
     epic.beadProgress.total > 0
