@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { queryKeys } from '@/lib/query-keys'
 import { capturesApi } from '@/lib/resources'
 import { useProject } from '@/providers/project-provider'
@@ -30,6 +31,9 @@ export function useCreateCaptureMutation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.captures.all(projectId) })
     },
+    onError: (err) => {
+      toast.error(`Failed to create capture: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    },
   })
 }
 
@@ -49,6 +53,9 @@ export function useUpdateCaptureMutation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.captures.all(projectId) })
     },
+    onError: (err) => {
+      toast.error(`Failed to update capture: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    },
   })
 }
 
@@ -61,6 +68,9 @@ export function useDeleteCaptureMutation() {
       capturesApi.delete(projectId, captureId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.captures.all(projectId) })
+    },
+    onError: (err) => {
+      toast.error(`Failed to delete capture: ${err instanceof Error ? err.message : 'Unknown error'}`)
     },
   })
 }

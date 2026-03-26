@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { queryKeys } from '@/lib/query-keys'
 import { projectsApi, reposApi, membersApi, rulesApi, webhooksApi } from '@/lib/resources'
 import { useProject } from '@/providers/project-provider'
@@ -31,6 +32,9 @@ export function useUpdateProject() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(projectId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.projects.list() })
+    },
+    onError: (err) => {
+      toast.error(`Failed to update project: ${err instanceof Error ? err.message : 'Unknown error'}`)
     },
   })
 }
@@ -72,6 +76,9 @@ export function useAddRepo() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.repos.all(projectId) })
     },
+    onError: (err) => {
+      toast.error(`Failed to add repository: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    },
   })
 }
 
@@ -84,6 +91,9 @@ export function usePullRepo() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.repos.all(projectId) })
     },
+    onError: (err) => {
+      toast.error(`Failed to pull repository: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    },
   })
 }
 
@@ -95,6 +105,9 @@ export function useRemoveRepo() {
     mutationFn: (repoName: string) => reposApi.remove(projectId, repoName),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.repos.all(projectId) })
+    },
+    onError: (err) => {
+      toast.error(`Failed to remove repository: ${err instanceof Error ? err.message : 'Unknown error'}`)
     },
   })
 }
@@ -124,6 +137,9 @@ export function useAddMember() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.members.all(projectId) })
     },
+    onError: (err) => {
+      toast.error(`Failed to add member: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    },
   })
 }
 
@@ -137,6 +153,9 @@ export function useUpdateMemberRole() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.members.all(projectId) })
     },
+    onError: (err) => {
+      toast.error(`Failed to update member role: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    },
   })
 }
 
@@ -148,6 +167,9 @@ export function useRemoveMember() {
     mutationFn: (userId: string) => membersApi.remove(projectId, userId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.members.all(projectId) })
+    },
+    onError: (err) => {
+      toast.error(`Failed to remove member: ${err instanceof Error ? err.message : 'Unknown error'}`)
     },
   })
 }
@@ -177,6 +199,9 @@ export function useCreateRule() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.rules.all(projectId) })
     },
+    onError: (err) => {
+      toast.error(`Failed to create rule: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    },
   })
 }
 
@@ -190,6 +215,9 @@ export function useUpdateRule() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.rules.all(projectId) })
     },
+    onError: (err) => {
+      toast.error(`Failed to update rule: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    },
   })
 }
 
@@ -201,6 +229,9 @@ export function useDeleteRule() {
     mutationFn: (ruleId: string) => rulesApi.delete(projectId, ruleId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.rules.all(projectId) })
+    },
+    onError: (err) => {
+      toast.error(`Failed to delete rule: ${err instanceof Error ? err.message : 'Unknown error'}`)
     },
   })
 }
@@ -230,6 +261,9 @@ export function useCreateWebhook() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.webhooks.all(projectId) })
     },
+    onError: (err) => {
+      toast.error(`Failed to create webhook: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    },
   })
 }
 
@@ -243,6 +277,9 @@ export function useUpdateWebhook() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.webhooks.all(projectId) })
     },
+    onError: (err) => {
+      toast.error(`Failed to update webhook: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    },
   })
 }
 
@@ -254,6 +291,9 @@ export function useDeleteWebhook() {
     mutationFn: (webhookId: string) => webhooksApi.delete(projectId, webhookId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.webhooks.all(projectId) })
+    },
+    onError: (err) => {
+      toast.error(`Failed to delete webhook: ${err instanceof Error ? err.message : 'Unknown error'}`)
     },
   })
 }

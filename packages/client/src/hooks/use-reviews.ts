@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { queryKeys } from '@/lib/query-keys'
 import { reviewsApi } from '@/lib/resources'
 import { useProject } from '@/providers/project-provider'
@@ -172,6 +173,9 @@ export function useAddComment() {
         queryKey: queryKeys.reviews.detail(variables.sessionId),
       })
     },
+    onError: (err) => {
+      toast.error(`Failed to add comment: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    },
   })
 }
 
@@ -189,6 +193,9 @@ export function useMergePr() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.reviews.all(projectId),
       })
+    },
+    onError: (err) => {
+      toast.error(`Failed to merge PR: ${err instanceof Error ? err.message : 'Unknown error'}`)
     },
   })
 }

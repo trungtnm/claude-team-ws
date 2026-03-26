@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
+import { toast } from 'sonner'
 import { queryKeys } from '@/lib/query-keys'
 import { sessionsApi } from '@/lib/resources'
 import { joinSession, leaveSession } from '@/lib/socket'
@@ -67,6 +68,9 @@ export function useCreateSessionMutation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all(projectId) })
     },
+    onError: (err) => {
+      toast.error(`Failed to create session: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    },
   })
 }
 
@@ -78,6 +82,9 @@ export function useCancelSessionMutation() {
     mutationFn: (sessionId: string) => sessionsApi.cancel(sessionId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all(projectId) })
+    },
+    onError: (err) => {
+      toast.error(`Failed to cancel session: ${err instanceof Error ? err.message : 'Unknown error'}`)
     },
   })
 }
@@ -91,6 +98,9 @@ export function useResumeSessionMutation() {
       sessionsApi.resume(sessionId, { prompt }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all(projectId) })
+    },
+    onError: (err) => {
+      toast.error(`Failed to resume session: ${err instanceof Error ? err.message : 'Unknown error'}`)
     },
   })
 }
@@ -107,6 +117,9 @@ export function useAnswerSessionMutation() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.sessions.detail(variables.sessionId),
       })
+    },
+    onError: (err) => {
+      toast.error(`Failed to send answer: ${err instanceof Error ? err.message : 'Unknown error'}`)
     },
   })
 }

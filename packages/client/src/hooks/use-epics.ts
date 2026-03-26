@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { epicsApi } from '@/lib/resources'
 import { queryKeys } from '@/lib/query-keys'
 import { useProject } from '@/providers/project-provider'
@@ -166,6 +167,9 @@ export function useCreateEpic() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.epics.all(projectId) })
     },
+    onError: (err) => {
+      toast.error(`Failed to create epic: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    },
   })
 }
 
@@ -194,6 +198,9 @@ export function useUpdateEpic() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.epics.detail(projectId, epicId),
       })
+    },
+    onError: (err) => {
+      toast.error(`Failed to update epic: ${err instanceof Error ? err.message : 'Unknown error'}`)
     },
   })
 }
