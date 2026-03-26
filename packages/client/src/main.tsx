@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ApiError } from './lib/api-error'
 import { ErrorBoundary } from './components/error-boundary'
 import { AuthProvider } from './providers/auth-provider'
 import { ProjectProvider } from './providers/project-provider'
@@ -14,7 +15,11 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30_000,
-      retry: 1,
+      retry: (failureCount, error) => {
+        // Never retry on auth errors — the global 401 handler will redirect
+        if (error instanceof ApiError && error.isUnauthorized) return false
+        return failureCount < 1
+      },
       refetchOnWindowFocus: true,
       gcTime: 5 * 60 * 1000,
     },

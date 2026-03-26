@@ -33,21 +33,11 @@ const models = [
   { id: 'haiku', label: 'Haiku', description: 'Fastest' },
 ] as const
 
-const permissionModes = [
-  { id: 'default', label: 'Default' },
-  { id: 'plan', label: 'Plan' },
-  { id: 'auto', label: 'Auto' },
-  { id: 'bypassPermissions', label: 'Bypass' },
-] as const
-
-const DEFAULT_DIR = '/Users/dev/project'
-
 export function NewSessionDialog({ open, onOpenChange, onCreated }: NewSessionDialogProps) {
+  const [sessionName, setSessionName] = useState('')
   const [prompt, setPrompt] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [model, setModel] = useState('sonnet')
-  const [targetDir, setTargetDir] = useState(DEFAULT_DIR)
-  const [permissionMode, setPermissionMode] = useState('default')
 
   const createMutation = useCreateSessionMutation()
 
@@ -55,10 +45,11 @@ export function NewSessionDialog({ open, onOpenChange, onCreated }: NewSessionDi
     if (!prompt.trim() && attachments.length === 0) return
 
     createMutation.mutate(
-      { prompt: prompt.trim(), model },
+      { prompt: prompt.trim(), model, name: sessionName.trim() || undefined },
       {
         onSuccess: (data) => {
           toast.success('Session started')
+          setSessionName('')
           setPrompt('')
           setAttachments([])
           onOpenChange(false)
@@ -69,7 +60,7 @@ export function NewSessionDialog({ open, onOpenChange, onCreated }: NewSessionDi
         },
       },
     )
-  }, [prompt, attachments, model, createMutation, onOpenChange, onCreated])
+  }, [prompt, attachments, model, sessionName, createMutation, onOpenChange, onCreated])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -82,6 +73,17 @@ export function NewSessionDialog({ open, onOpenChange, onCreated }: NewSessionDi
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Session name (optional) */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-ink-secondary">Session Name <span className="text-ink-disabled">(optional)</span></label>
+            <Input
+              value={sessionName}
+              onChange={(e) => setSessionName(e.target.value)}
+              placeholder="e.g., Fix auth bug, Add dark mode"
+              className="text-sm"
+            />
+          </div>
+
           {/* Prompt with rich input */}
           <div>
             <label className="mb-1.5 block text-xs font-medium text-ink-secondary">Prompt</label>
@@ -123,42 +125,6 @@ export function NewSessionDialog({ open, onOpenChange, onCreated }: NewSessionDi
             </div>
           </div>
 
-          {/* Target directory */}
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-ink-secondary">
-              Target Directory
-            </label>
-            <Input
-              value={targetDir}
-              onChange={(e) => setTargetDir(e.target.value)}
-              placeholder="/path/to/project"
-              className="font-mono text-xs"
-            />
-          </div>
-
-          {/* Permission mode */}
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-ink-secondary">
-              Permission Mode
-            </label>
-            <div className="flex gap-2">
-              {permissionModes.map((pm) => (
-                <button
-                  key={pm.id}
-                  type="button"
-                  onClick={() => setPermissionMode(pm.id)}
-                  className={cn(
-                    'flex-1 rounded-[var(--radius-md)] border px-3 py-1.5 text-center text-xs font-medium transition-colors cursor-pointer',
-                    permissionMode === pm.id
-                      ? 'border-accent bg-accent-subtle text-ink'
-                      : 'border-edge text-ink-muted hover:border-edge-hover',
-                  )}
-                >
-                  {pm.label}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         <DialogFooter>

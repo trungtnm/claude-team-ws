@@ -125,7 +125,7 @@ export const sessionsApi = {
   },
   get: (sessionId: string) =>
     api.get<{ session: AgentSession }>(`/sessions/${sessionId}`),
-  create: (projectId: string, data: { epicId: string; model?: string; promptOverride?: string | null }) =>
+  create: (projectId: string, data: { epicId?: string; model?: string; name?: string; prompt: string }) =>
     api.post<{ session: AgentSession }>(`/projects/${projectId}/sessions`, data),
   cancel: (sessionId: string) =>
     api.post<void>(`/sessions/${sessionId}/cancel`),

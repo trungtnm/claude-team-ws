@@ -131,6 +131,7 @@ export interface AgentSession {
   projectId: string
   epicId: string | null
   userId: string
+  name: string | null
   claudeSessionId: string | null
   agentMailName: string | null
   model: string

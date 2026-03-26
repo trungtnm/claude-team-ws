@@ -59,11 +59,12 @@ export function useCreateSessionMutation() {
   const { projectId } = useProject()
 
   return useMutation({
-    mutationFn: (data: { prompt: string; model?: string; epicId?: string }) =>
+    mutationFn: (data: { prompt: string; model?: string; name?: string; epicId?: string }) =>
       sessionsApi.create(projectId, {
-        epicId: data.epicId || '',
+        epicId: data.epicId,
         model: data.model,
-        promptOverride: data.prompt,
+        name: data.name,
+        prompt: data.prompt,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all(projectId) })

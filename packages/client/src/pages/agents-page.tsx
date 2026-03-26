@@ -80,7 +80,8 @@ export default function AgentsPage() {
     const q = searchQuery.toLowerCase().trim()
     const match = (s: AgentSession) =>
       !q ||
-      s.prompt.toLowerCase().includes(q)
+      s.prompt.toLowerCase().includes(q) ||
+      (s.name?.toLowerCase().includes(q) ?? false)
 
     switch (activeTab) {
       case 'active':
@@ -228,7 +229,7 @@ export default function AgentsPage() {
                     >
                       <PanelLeftOpen className="h-4 w-4" />
                     </Button>
-                    <span className="text-sm font-medium text-ink truncate max-w-sm">{selectedSession.prompt}</span>
+                    <span className="text-sm font-medium text-ink truncate max-w-sm">{selectedSession.name || selectedSession.prompt}</span>
                     <Badge variant="outline" className="text-[10px]">{selectedSession.model}</Badge>
                     <Badge variant={statusConfig[selectedSession.status]?.badge ?? 'default'}>
                       {statusConfig[selectedSession.status]?.label}
@@ -351,7 +352,7 @@ function SessionListItem({
             active && 'animate-pulse',
           )} />
           <span className="text-sm font-medium text-ink truncate">
-            {session.prompt.slice(0, 60)}
+            {session.name || session.prompt.slice(0, 60)}
           </span>
         </div>
         <Badge variant={config.badge} className="text-[9px] shrink-0 ml-2">
