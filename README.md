@@ -4,6 +4,8 @@
 
 A shared workspace for dev teams on a Mac Mini host. PM/Dev capture ideas, triage them into Epics, trigger Agent sessions, and review via PR workflow.
 
+> **Project Status (March 2025):** The codebase is in a **clean-slate reimplementation phase**. A previous implementation was intentionally removed (commit `f365814`) to start fresh with lessons learned. The architecture specs in `docs/` and UI reference implementations in `ui/` remain as blueprints. This README describes the **target architecture** — sections marked with *(reference only)* indicate components not yet reimplemented.
+
 ---
 
 ## Architecture Decisions (Finalized)
@@ -169,7 +171,9 @@ The application uses a horizontal header-based navigation (no sidebar):
 
 ## Technical Foundation
 
-### Docker Compose (`docker/docker-compose.yml`)
+### Docker Compose *(not yet created)*
+
+The `docker/` directory will contain Docker Compose config for Agent Mail + CM. Target setup:
 
 ```yaml
 services:
@@ -204,70 +208,64 @@ volumes:
 
 ```
 claude-team-ws/
-├── docker/
-│   ├── docker-compose.yml       # Agent Mail + CM
-│   ├── agent-mail/Dockerfile
-│   └── cm/Dockerfile
+├── docs/                        # Architecture specs (committed)
+│   ├── 00-kickoff-readme.md     #   Project kickoff & overview
+│   ├── 01-database-schema.md    #   14-table SQLite schema spec
+│   ├── 02-api-specification.md  #   REST + Socket.IO API spec
+│   ├── 03-infrastructure-setup.md
+│   ├── 04-socket-io-events.md   #   Event catalog with payloads
+│   ├── 05-ui-wireframes.md      #   Page-level wireframes
+│   ├── 06-agent-lifecycle.md    #   Agent spawn/stream/complete flow
+│   ├── 07-dependencies.md       #   npm dependency inventory
+│   ├── 08-project-claude-md.md  #   CLAUDE.md generation spec
+│   ├── 09-umbrella-repo-workflow.md
+│   └── ui-specs/                #   Per-page UI implementation specs
+│       ├── board-page.md
+│       ├── captures-page.md
+│       ├── agents-page.md
+│       ├── graph-page.md
+│       ├── pr-review-page.md
+│       ├── settings-page.md
+│       └── layout-and-shared.md
 │
-├── packages/
-│   ├── client/                  # Vite + React SPA
-│   │   ├── src/
-│   │   │   ├── components/
-│   │   │   │   ├── kanban/      # Epic Kanban board
-│   │   │   │   ├── capture/     # Capture dialog + triage
-│   │   │   │   ├── agent/       # Agent stream + Q&A panel
-│   │   │   │   ├── review/      # PR review module (diff viewer)
-│   │   │   │   ├── graph/       # Dependency graph (React Flow)
-│   │   │   │   ├── rules/       # CM rules management (TechLead)
-│   │   │   │   ├── mail/        # Agent Mail thread viewer
-│   │   │   │   └── ui/          # shadcn/ui
-│   │   │   ├── hooks/
-│   │   │   ├── stores/          # Zustand
-│   │   │   └── pages/           # React Router
-│   │   └── vite.config.ts
-│   │
-│   └── server/                  # Express API
-│       ├── src/
-│       │   ├── routes/
-│       │   │   ├── auth.ts
-│       │   │   ├── beads.ts     # Proxy to br CLI
-│       │   │   ├── epics.ts
-│       │   │   ├── captures.ts
-│       │   │   ├── sessions.ts  # Agent management
-│       │   │   ├── graph.ts     # bv integration
-│       │   │   ├── review.ts    # PR workflow
-│       │   │   ├── rules.ts     # CM rules (proxy to CM MCP)
-│       │   │   ├── mail.ts      # Agent Mail (proxy to MCP)
-│       │   │   └── webhooks.ts  # Slack/Discord
-│       │   ├── services/
-│       │   │   ├── beads-service.ts     # br CLI wrapper
-│       │   │   ├── bv-service.ts        # bv CLI wrapper
-│       │   │   ├── agent-manager.ts     # Claude CLI process manager
-│       │   │   ├── agent-mail-client.ts # HTTP client for Agent Mail MCP
-│       │   │   ├── cm-client.ts         # HTTP client for CM MCP
-│       │   │   ├── cass-service.ts      # cass CLI wrapper
-│       │   │   ├── socket-manager.ts    # Socket.IO rooms & events
-│       │   │   ├── git-service.ts       # Branch, PR, merge
-│       │   │   └── webhook-service.ts   # Notification dispatch
-│       │   ├── db/
-│       │   │   ├── schema.ts
-│       │   │   └── index.ts
-│       │   └── middleware/
-│       │       ├── auth.ts
-│       │       └── rbac.ts
-│       └── package.json
+├── packages/                    # Monorepo packages (to be reimplemented)
+│   ├── client/                  #   Vite + React SPA (port 5173)
+│   └── server/                  #   Express API (port 3000)
 │
-├── ui/                          # Standalone UI demo (Vite + React, port 5174)
+├── ui/                          # ⭐ UI reference implementation (untracked)
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── agents/          #   Agent stream viewer (7 components)
+│   │   │   ├── board/           #   Epic Kanban board (8 components)
+│   │   │   ├── capture/         #   Capture inbox + triage (5 components)
+│   │   │   ├── graph/           #   Dependency graph (4 components)
+│   │   │   ├── layout/          #   Header, notifications (4 components)
+│   │   │   ├── pr-review/       #   PR diff viewer (5 components)
+│   │   │   ├── settings/        #   Project/users/repos tabs (6 components)
+│   │   │   └── ui/              #   shadcn/ui primitives (13 components)
+│   │   ├── data/                #   Mock data for all domains (12 files)
+│   │   ├── stores/              #   Zustand stores (4 files)
+│   │   └── pages/               #   Route pages (7 files)
+│   └── vite.config.ts
+│
 ├── playgrounds/
-│   └── agents/                  # Agent Mission Control playground (real Claude Code sessions)
-│       ├── server/              # Express + Socket.IO + Agent SDK
-│       └── src/                 # React UI (Vite)
-├── package.json                 # pnpm workspaces root
-├── pnpm-workspace.yaml
-├── ecosystem.config.cjs         # PM2
-├── .env.example
-└── CLAUDE.md
+│   └── agents/                  # ⭐ Agent SDK reference (untracked)
+│       ├── server/              #   Express + Socket.IO + Agent SDK
+│       │   ├── index.ts         #   Server entry, Socket.IO setup
+│       │   ├── session-manager.ts # Real Claude Code session management
+│       │   └── types.ts
+│       ├── src/                 #   React UI for agent control
+│       └── e2e/                 #   Playwright test for agent flow
+│
+├── .beads/                      # Beads issue tracker (committed)
+├── .env.example                 # Environment variable template
+├── package.json                 # Root config (docker scripts only)
+├── tsconfig.base.json           # Shared TypeScript config
+├── CLAUDE.md                    # AI coding instructions
+└── README.md
 ```
+
+> **Note:** `ui/` and `playgrounds/` are **untracked reference implementations** — working prototypes built during the first iteration. They serve as blueprints for the production `packages/` reimplementation. Run them standalone (see [Reference Implementations](#reference-implementations) below).
 
 ### Agent Spawn Flow (with Agent Mail + CM)
 
@@ -383,14 +381,15 @@ pnpm install
 # Configure environment
 cp .env.example .env
 # Edit .env: set JWT_SECRET, ADMIN_EMAIL, ADMIN_API_KEY
-
-# Start development
-pnpm dev    # Express :3000 + Vite :5173
 ```
 
-### UI Demo (Standalone)
+> **Current state:** The monorepo packages (`packages/client`, `packages/server`) are being reimplemented. The `pnpm dev` command is not yet available at root level. See [Reference Implementations](#reference-implementations) below for runnable prototypes.
 
-The `ui/` directory contains a standalone UI demo that can be run independently without the backend:
+### <a id="reference-implementations"></a>Reference Implementations
+
+#### UI Demo (Standalone)
+
+The `ui/` directory contains a standalone UI demo with all pages, components, and mock data — no backend required:
 
 ```bash
 cd ui
@@ -398,19 +397,11 @@ pnpm install
 pnpm dev    # Vite dev server on :5174
 ```
 
-### Verify
+Includes: Board (Kanban), Captures (inbox + triage), Agents (stream viewer), Graph (dependency visualization), PR Review (diff viewer), and Settings pages with 52+ components.
 
-```bash
-# Health check
-curl http://localhost:3000/api/health
+#### Agent Mission Control Playground
 
-# Run tests
-pnpm test              # 110+ unit tests
-pnpm test:integration  # Integration tests (real SQLite)
-pnpm test:e2e          # E2E tests (Playwright, auto-starts servers)
-```
-
-### Agent Mission Control Playground
+The `playgrounds/agents/` directory is a working prototype for spawning and interacting with Claude Code sessions via the Agent SDK:
 
 ```bash
 cd playgrounds/agents
@@ -418,13 +409,13 @@ npm install
 npm run dev    # Express :3001 + Vite :5175
 ```
 
-Open http://localhost:5175 to spawn and interact with Claude Code sessions.
+Open http://localhost:5175 to spawn sessions, stream NDJSON events, and handle AskUserQuestion flows. This playground validates the Agent SDK integration patterns documented in `docs/06-agent-lifecycle.md`.
 
 ---
 
 ## Development Guide
 
-### Testing Strategy
+### Testing Strategy *(target — to be reimplemented)*
 
 | Layer | Tool | Command | Scope |
 |-------|------|---------|-------|
@@ -435,6 +426,8 @@ Open http://localhost:5175 to spawn and interact with Claude Code sessions.
 **Integration tests** use in-memory SQLite via `createTestDb()` from `packages/server/src/db/test-db.ts`. Each test file gets a fresh schema; `cleanAllTables()` resets data between tests.
 
 **E2E tests** auto-start the dev server via Playwright's `webServer` config. Write specs in `packages/client/e2e/`.
+
+> **Currently available:** `playgrounds/agents/e2e/agents.spec.ts` — Playwright E2E test for the Agent SDK playground. Run with `cd playgrounds/agents && npx playwright test`.
 
 ### Adding a New Feature
 
@@ -484,3 +477,136 @@ br list --json           # All open issues
 bv --robot-triage        # AI-powered triage with dependency analysis
 bv --robot-plan          # Parallel execution tracks
 ```
+
+---
+
+## Architecture Specifications
+
+The `docs/` directory contains detailed specs that serve as the source of truth for implementation. These were written before the first iteration and refined based on lessons learned:
+
+| Doc | Purpose |
+|-----|---------|
+| `00-kickoff-readme.md` | Project overview, goals, and constraints |
+| `01-database-schema.md` | Full 14-table SQLite schema with column definitions, indexes, and relationships |
+| `02-api-specification.md` | REST API endpoints with request/response shapes, auth requirements, and error codes |
+| `03-infrastructure-setup.md` | Docker Compose, PM2, Cloudflare Tunnel setup guide |
+| `04-socket-io-events.md` | Event catalog: room structure, event payloads, and client/server contracts |
+| `05-ui-wireframes.md` | Page-level wireframes and component hierarchy |
+| `06-agent-lifecycle.md` | Agent spawn → stream → Q&A → complete → PR flow with state machine |
+| `07-dependencies.md` | npm dependency inventory with version pins and justifications |
+| `08-project-claude-md.md` | Template for generating per-repo CLAUDE.md for agent workers |
+| `09-umbrella-repo-workflow.md` | Multi-repo coordination strategy |
+
+The `docs/ui-specs/` subdirectory has per-page implementation specs (board, captures, agents, graph, PR review, settings, layout) — these map 1:1 to the reference components in `ui/src/`.
+
+---
+
+## Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|:--------:|---------|-------------|
+| `PORT` | No | `3000` | Express API server port |
+| `NODE_ENV` | No | `development` | Environment (`development` / `production`) |
+| `DATABASE_PATH` | No | `./data/workspace.db` | SQLite database file path |
+| `JWT_SECRET` | **Yes** | — | Secret for signing JWT auth tokens |
+| `ADMIN_EMAIL` | **Yes** | — | Bootstrap admin user email |
+| `ADMIN_API_KEY` | **Yes** | — | API key for the admin user |
+| `AGENT_MAIL_URL` | No | `http://127.0.0.1:8765/mcp/` | Agent Mail MCP server URL |
+| `MCP_AGENT_MAIL_TOKEN` | No | — | Bearer token for Agent Mail API |
+| `CM_URL` | No | `http://127.0.0.1:9900` | CASS Memory server URL |
+| `PROJECT_ROOT` | No | — | Filesystem path to the target project repo(s) |
+
+Copy `.env.example` to `.env` and fill in the **required** values before starting.
+
+---
+
+## Data Flow Architecture
+
+```mermaid
+graph LR
+    subgraph Browser
+        UI[React SPA]
+    end
+
+    subgraph "Express Server"
+        API[REST API]
+        SIO[Socket.IO]
+        AM[Agent Manager]
+    end
+
+    subgraph "SQLite"
+        DB[(workspace.db)]
+    end
+
+    subgraph "CLI Tools"
+        BR[br CLI]
+        BV[bv CLI]
+        CASS[cass CLI]
+        GH[gh CLI]
+    end
+
+    subgraph "Docker Services"
+        MAIL[Agent Mail :8765]
+        CM[CM Memory :9900]
+    end
+
+    subgraph "External"
+        CLAUDE[Claude Code Agent SDK]
+        GIT[Git / GitHub]
+    end
+
+    UI -->|HTTP + WS| API
+    UI <-->|real-time| SIO
+    API --> DB
+    API -->|execFile| BR
+    API -->|execFile| BV
+    API -->|execFile| CASS
+    API -->|execFile| GH
+    API -->|HTTP| MAIL
+    API -->|HTTP| CM
+    AM -->|Agent SDK query()| CLAUDE
+    AM -->|NDJSON stream| SIO
+    CLAUDE -->|git push| GIT
+    CLAUDE -->|gh pr create| GIT
+    BR -->|read/write| BeadsDB[(.beads/beads.db)]
+```
+
+**Key design principle:** All CLI tools are invoked via `child_process.execFile` (never `exec`) to prevent shell injection. Docker services are accessed via HTTP clients. The Agent SDK handles Claude Code sessions programmatically with proper lifecycle management (AbortController for cancellation, resume support via session ID).
+
+---
+
+## Dual Database Architecture (Detailed)
+
+The system uses two separate SQLite databases with distinct ownership boundaries:
+
+```
+┌─────────────────────────────────────┐    ┌─────────────────────────────────┐
+│       App SQLite (workspace.db)      │    │   Beads SQLite (.beads/)        │
+│                                      │    │                                 │
+│  Owner: Express / Drizzle ORM        │    │  Owner: br CLI (Rust binary)    │
+│  Access: Direct SQL queries          │    │  Access: ONLY via execFile('br')│
+│                                      │    │                                 │
+│  Tables:                             │    │  Contains:                      │
+│  ├── users (auth, roles)             │    │  ├── issues (epics, tasks, bugs)│
+│  ├── projects (workspace config)     │    │  ├── dependencies (DAG edges)   │
+│  ├── project_members (RBAC)          │    │  ├── comments (discussion)      │
+│  ├── repos (multi-repo tracking)     │    │  └── labels, priorities         │
+│  ├── captures (idea inbox)           │    │                                 │
+│  ├── epics (metadata + bead ref)     │    │  Git sync:                      │
+│  ├── sessions (agent lifecycle)      │    │  └── .beads/issues.jsonl        │
+│  ├── session_events (NDJSON log)     │    │      (committed to git)         │
+│  ├── agent_queue (concurrency)       │    │                                 │
+│  ├── knowledge_rules (CM cache)      │    └─────────────────────────────────┘
+│  ├── webhooks (Slack/Discord)        │
+│  ├── notifications (in-app)         │
+│  └── activity_log (audit trail)      │
+│                                      │
+│  NOT synced to git                   │
+└─────────────────────────────────────┘
+
+Bridge: epics.bead_epic_id → references a bead in br
+        Fetch via: beadsService.show(beadId)
+        NEVER query .beads/beads.db directly
+```
+
+**Why two databases?** The Beads database is managed by the `br` CLI and synced to git via JSONL — it's the team's shared issue tracker. The app database holds session-local state (auth, UI preferences, agent queues) that shouldn't be in version control. The `epics` table bridges the two: each Epic row references a Bead ID for its canonical issue data.
