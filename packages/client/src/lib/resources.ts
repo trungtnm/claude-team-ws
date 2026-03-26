@@ -97,7 +97,14 @@ export const epicsApi = {
     repos: string[]
   }) =>
     api.post<{ epic: Epic }>(`/projects/${projectId}/epics`, data),
-  update: (projectId: string, epicId: string, data: Partial<Epic>) =>
+  update: (projectId: string, epicId: string, data: {
+    uiStatus?: string
+    gitBranches?: string[]
+    beadPriority?: number
+    beadType?: string
+    beadLabels?: string[]
+    beadAssignee?: string
+  }) =>
     api.patch<{ epic: Epic }>(`/projects/${projectId}/epics/${epicId}`, data),
   analyzeScope: (projectId: string, epicId: string) =>
     api.post<{ analysis: ScopeAnalysis }>(`/projects/${projectId}/epics/${epicId}/analyze-scope`),

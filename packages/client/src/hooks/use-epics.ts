@@ -173,23 +173,24 @@ export function useCreateEpic() {
   })
 }
 
+export interface UpdateEpicInput {
+  epicId: string
+  // App DB fields
+  uiStatus?: string
+  gitBranches?: string[]
+  // Bead-level fields (synced via br CLI on server)
+  beadPriority?: number
+  beadType?: string
+  beadLabels?: string[]
+  beadAssignee?: string
+}
+
 export function useUpdateEpic() {
   const { projectId } = useProject()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({
-      epicId,
-      ...data
-    }: {
-      epicId: string
-      uiStatus?: string
-      gitBranches?: string[]
-    }) => {
-      const { epic } = await epicsApi.update(
-        projectId,
-        epicId,
-        data as Partial<ServerEpic>,
-      )
+    mutationFn: async ({ epicId, ...data }: UpdateEpicInput) => {
+      const { epic } = await epicsApi.update(projectId, epicId, data)
       return toUIEpic(epic)
     },
     onSuccess: (_, { epicId }) => {
