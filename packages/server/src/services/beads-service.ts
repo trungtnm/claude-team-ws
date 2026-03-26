@@ -80,12 +80,16 @@ export class BeadsService {
     status?: string
     priority?: number
     title?: string
+    type?: string
+    assignee?: string
     labels?: string[]
   }): Promise<void> {
     const args = ['update', beadId]
     if (options.status) args.push(`--status=${options.status}`)
     if (options.priority !== undefined) args.push('-p', String(options.priority))
     if (options.title) args.push(`--title=${options.title}`)
+    if (options.type) args.push('-t', options.type)
+    if (options.assignee !== undefined) args.push(`--assignee=${options.assignee}`)
     if (options.labels?.length) {
       for (const label of options.labels) {
         args.push(`--label=${label}`)

@@ -192,14 +192,20 @@ export function createEpicsRouter({ db, beadsService }: EpicsRouterDeps): Router
   })
 
   const updateEpicSchema = z.object({
+    // App DB fields (epics table)
     ui_status: z.enum(['blocked', 'ready', 'in_progress', 'in_review', 'done', 'cancelled']).optional(),
     git_branches: z.array(z.string()).optional(),
     scope_analysis: z.record(z.unknown()).nullable().optional(),
     split_proposal: z.record(z.unknown()).nullable().optional(),
+    // Bead-level fields (synced to beads.db via br CLI)
+    bead_priority: z.number().int().min(0).max(4).optional(),
+    bead_type: z.enum(['feature', 'bug', 'task', 'docs', 'epic', 'spike']).optional(),
+    bead_labels: z.array(z.string().max(50)).optional(),
+    bead_assignee: z.string().max(100).optional(),
   })
 
-  // PATCH /:epicId — update epic
-  router.patch('/:epicId', requireRole('pm', 'techlead'), (req, res) => {
+  // PATCH /:epicId — update epic (app DB + bead DB)
+  router.patch('/:epicId', requireRole('pm', 'techlead'), async (req, res) => {
     try {
       const parsed = updateEpicSchema.safeParse(req.body)
       if (!parsed.success) {
@@ -221,6 +227,7 @@ export function createEpicsRouter({ db, beadsService }: EpicsRouterDeps): Router
         return
       }
 
+      // Update app DB fields
       const now = Math.floor(Date.now() / 1000)
       const updates: Record<string, unknown> = { updated_at: now }
       if (parsed.data.ui_status !== undefined) updates.ui_status = parsed.data.ui_status
@@ -234,12 +241,42 @@ export function createEpicsRouter({ db, beadsService }: EpicsRouterDeps): Router
 
       db.update(epics).set(updates).where(eq(epics.id, epicId)).run()
 
+      // Update bead-level fields via br CLI (if any bead fields were provided)
+      const beadUpdate: Record<string, unknown> = {}
+      if (parsed.data.bead_priority !== undefined) beadUpdate.priority = parsed.data.bead_priority
+      if (parsed.data.bead_type !== undefined) beadUpdate.type = parsed.data.bead_type
+      if (parsed.data.bead_labels !== undefined) beadUpdate.labels = parsed.data.bead_labels
+      if (parsed.data.bead_assignee !== undefined) beadUpdate.assignee = parsed.data.bead_assignee
+
+      if (Object.keys(beadUpdate).length > 0) {
+        try {
+          await beadsService.update(existing.bead_epic_id, beadUpdate as {
+            priority?: number
+            type?: string
+            labels?: string[]
+            assignee?: string
+          })
+        } catch (beadErr) {
+          // Log but don't fail the request — app DB was already updated
+          console.error(`Failed to update bead ${existing.bead_epic_id}:`, beadErr)
+        }
+      }
+
+      // Re-fetch with hydrated bead data
       const updated = db.select().from(epics).where(eq(epics.id, epicId)).get()!
+      let beadData: Record<string, unknown> | null = null
+      try {
+        beadData = await beadsService.show(updated.bead_epic_id)
+      } catch {
+        // Service may be unavailable
+      }
+
       const enriched = {
         ...updated,
         git_branches: JSON.parse(updated.git_branches),
         scope_analysis: updated.scope_analysis ? JSON.parse(updated.scope_analysis) : null,
         split_proposal: updated.split_proposal ? JSON.parse(updated.split_proposal) : null,
+        bead: beadData,
       }
 
       emitToProject(projectId, 'epic:updated', enriched)
