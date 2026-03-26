@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Camera, Save, Copy, Check, Download, RefreshCw, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { useProjectSettings, useUpdateProject } from '@/hooks/use-settings'
 import { useProject } from '@/providers/project-provider'
+import { healthApi } from '@/lib/resources'
 import type { AskQuestionMode } from '@/types'
 
 const askQuestionModes = [
@@ -51,6 +52,7 @@ export function ProjectTab() {
   const [askMode, setAskMode] = useState<AskQuestionMode>('hybrid')
   const [copied, setCopied] = useState(false)
   const [integrationStatuses, setIntegrationStatuses] = useState(defaultIntegrations)
+  const [integrationsLoading, setIntegrationsLoading] = useState(false)
   const [formInitialized, setFormInitialized] = useState(false)
 
   // Sync form state only on first load (not on every refetch)
@@ -89,10 +91,42 @@ export function ProjectTab() {
   }
 
 
+  const fetchIntegrationStatus = useCallback(async () => {
+    setIntegrationsLoading(true)
+    try {
+      const data = await healthApi.diagnostics()
+      const statuses: IntegrationStatus[] = [
+        {
+          name: 'Agent Mail',
+          detail: 'port 8765',
+          status: data.dockerServices.agentMail ? 'connected' : 'disconnected',
+        },
+        {
+          name: 'Context Manager (CM)',
+          detail: 'port 9900',
+          status: data.dockerServices.cm ? 'connected' : 'disconnected',
+        },
+        {
+          name: 'CASS',
+          detail: 'CLI tool',
+          status: data.cliTools.cass ? 'connected' : 'not-found',
+        },
+      ]
+      setIntegrationStatuses(statuses)
+    } catch {
+      toast.error('Failed to fetch integration status')
+    } finally {
+      setIntegrationsLoading(false)
+    }
+  }, [])
+
+  // Fetch integration status on mount
+  useEffect(() => {
+    fetchIntegrationStatus()
+  }, [fetchIntegrationStatus])
+
   const handleRefreshIntegrations = () => {
-    // TODO: Call GET /api/health/integrations when endpoint exists
-    setIntegrationStatuses((prev) => prev.map((i) => ({ ...i })))
-    toast.info('Integration health check not yet connected to backend')
+    fetchIntegrationStatus()
   }
 
   if (isLoading) {
@@ -249,8 +283,8 @@ export function ProjectTab() {
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ink">Integrations</h3>
-          <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={handleRefreshIntegrations}>
-            <RefreshCw className="h-3 w-3" />
+          <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={handleRefreshIntegrations} disabled={integrationsLoading}>
+            {integrationsLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
             Refresh status
           </Button>
         </div>

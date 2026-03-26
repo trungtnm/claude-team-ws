@@ -224,6 +224,17 @@ export const notificationsApi = {
     api.post<void>('/notifications/mark-all-read'),
 }
 
+// Health / Diagnostics
+export const healthApi = {
+  diagnostics: () =>
+    api.get<{
+      status: string
+      cliTools: Record<string, boolean>
+      dockerServices: Record<string, boolean>
+      uptime: number
+    }>('/health/diagnostics'),
+}
+
 // Agent Mail (proxy)
 export const mailApi = {
   threads: (projectId: string) =>
