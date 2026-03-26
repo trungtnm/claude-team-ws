@@ -1,6 +1,7 @@
 import { Shield, ShieldCheck, ShieldOff, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { useSetPermissionModeMutation } from '@/hooks/use-sessions'
 
 interface PermissionModeBarProps {
   sessionId: string
@@ -14,10 +15,17 @@ const modes = [
   { id: 'bypassPermissions', label: 'Bypass', icon: ShieldOff, description: 'Skip all checks' },
 ] as const
 
-export function PermissionModeBar({ currentMode }: PermissionModeBarProps) {
+export function PermissionModeBar({ sessionId, currentMode }: PermissionModeBarProps) {
+  const setModeMutation = useSetPermissionModeMutation()
+
   const handleSwitch = (mode: string) => {
     if (mode === currentMode) return
-    toast.info(`Permission: ${mode}`)
+    setModeMutation.mutate(
+      { sessionId, mode },
+      {
+        onSuccess: () => toast.success(`Permission mode: ${mode}`),
+      },
+    )
   }
 
   return (
@@ -31,6 +39,7 @@ export function PermissionModeBar({ currentMode }: PermissionModeBarProps) {
             key={m.id}
             type="button"
             onClick={() => handleSwitch(m.id)}
+            disabled={setModeMutation.isPending}
             title={`${m.label}: ${m.description}`}
             className={cn(
               'flex items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[10px] font-medium transition-colors cursor-pointer',

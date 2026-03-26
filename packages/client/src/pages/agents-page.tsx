@@ -13,7 +13,7 @@ import { SessionStatsBar } from '@/components/agents/session-stats-bar'
 import { SessionInput } from '@/components/agents/session-input'
 import { PermissionModeBar } from '@/components/agents/permission-mode-bar'
 import { NewSessionDialog } from '@/components/agents/new-session-dialog'
-import { useSessionsQuery, useCancelSessionMutation, useSessionRoom, isActiveSession } from '@/hooks/use-sessions'
+import { useSessionsQuery, useCancelSessionMutation, useCompleteSessionMutation, useSessionRoom, isActiveSession } from '@/hooks/use-sessions'
 import { cn } from '@/lib/utils'
 import type { AgentSession } from '@/types'
 
@@ -58,6 +58,7 @@ export default function AgentsPage() {
 
   const { data: allSessions = [], isLoading, error } = useSessionsQuery()
   const cancelMutation = useCancelSessionMutation()
+  const completeMutation = useCompleteSessionMutation()
 
   // Join Socket.IO room for the selected session to get real-time events
   useSessionRoom(selectedSessionId ?? undefined)
@@ -250,6 +251,17 @@ export default function AgentsPage() {
                       <Maximize2 className="h-3 w-3" />
                       Full View
                     </Button>
+                    {selectedSession.status === 'queued' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs"
+                        disabled={completeMutation.isPending}
+                        onClick={() => completeMutation.mutate(selectedSession.id)}
+                      >
+                        Complete
+                      </Button>
+                    )}
                     {(selectedSession.status === 'running' || selectedSession.status === 'waiting_input') && (
                       <Button
                         variant="ghost"

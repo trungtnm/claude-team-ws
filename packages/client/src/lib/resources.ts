@@ -143,6 +143,12 @@ export const sessionsApi = {
       `/projects/${projectId}/sessions/${sessionId}/events${qs ? `?${qs}` : ''}`,
     )
   },
+  complete: (projectId: string, sessionId: string) =>
+    api.post<{ session: AgentSession }>(`/projects/${projectId}/sessions/${sessionId}/complete`),
+  sendMessage: (projectId: string, sessionId: string, data: { message: string }) =>
+    api.post<{ status: string }>(`/projects/${projectId}/sessions/${sessionId}/message`, data),
+  setPermissionMode: (projectId: string, sessionId: string, data: { mode: string }) =>
+    api.post<{ status: string; mode: string }>(`/projects/${projectId}/sessions/${sessionId}/permission-mode`, data),
 }
 
 // Reviews

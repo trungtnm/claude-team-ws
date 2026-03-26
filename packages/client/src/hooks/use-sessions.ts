@@ -127,6 +127,49 @@ export function useAnswerSessionMutation() {
   })
 }
 
+export function useCompleteSessionMutation() {
+  const queryClient = useQueryClient()
+  const { projectId } = useProject()
+
+  return useMutation({
+    mutationFn: (sessionId: string) => sessionsApi.complete(projectId, sessionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all(projectId) })
+    },
+    onError: (err) => {
+      toast.error(`Failed to complete session: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    },
+  })
+}
+
+export function useSendMessageMutation() {
+  const queryClient = useQueryClient()
+  const { projectId } = useProject()
+
+  return useMutation({
+    mutationFn: ({ sessionId, message }: { sessionId: string; message: string }) =>
+      sessionsApi.sendMessage(projectId, sessionId, { message }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.detail(variables.sessionId) })
+    },
+    onError: (err) => {
+      toast.error(`Failed to send message: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    },
+  })
+}
+
+export function useSetPermissionModeMutation() {
+  const { projectId } = useProject()
+
+  return useMutation({
+    mutationFn: ({ sessionId, mode }: { sessionId: string; mode: string }) =>
+      sessionsApi.setPermissionMode(projectId, sessionId, { mode }),
+    onError: (err) => {
+      toast.error(`Failed to set permission mode: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    },
+  })
+}
+
 // ── Session Room Hook ─────────────────────────────────────────────────────
 
 /** Join a Socket.IO session room while a session is selected, leave on cleanup */

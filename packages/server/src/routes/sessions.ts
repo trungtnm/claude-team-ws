@@ -276,6 +276,114 @@ router.post('/:sessionId/answer', (req, res) => {
   }
 })
 
+// POST /:sessionId/complete — mark idle session as completed
+router.post('/:sessionId/complete', (req, res) => {
+  try {
+    const projectId = param(req, 'projectId')
+    const sessionId = param(req, 'sessionId')
+
+    const session = db
+      .select()
+      .from(sessions)
+      .where(and(eq(sessions.id, sessionId), eq(sessions.project_id, projectId)))
+      .get()
+
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' })
+      return
+    }
+
+    if (session.status !== 'queued' && session.status !== 'running') {
+      res.status(400).json({ error: `Cannot complete session in ${session.status} status` })
+      return
+    }
+
+    const now = Math.floor(Date.now() / 1000)
+    db.update(sessions)
+      .set({ status: 'completed', finished_at: now })
+      .where(eq(sessions.id, sessionId))
+      .run()
+
+    const updated = db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
+    emitToProject(projectId, 'session:lifecycle', { session: updated, action: 'completed' })
+    res.json({ session: updated })
+  } catch (err) {
+    res.status(500).json({ error: logError('sessions', err) })
+  }
+})
+
+// POST /:sessionId/message — send follow-up message to running session
+router.post('/:sessionId/message', (req, res) => {
+  try {
+    const projectId = param(req, 'projectId')
+    const sessionId = param(req, 'sessionId')
+
+    const parsed = z.object({ message: z.string().min(1) }).safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Validation failed', issues: parsed.error.issues })
+      return
+    }
+
+    const session = db
+      .select()
+      .from(sessions)
+      .where(and(eq(sessions.id, sessionId), eq(sessions.project_id, projectId)))
+      .get()
+
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' })
+      return
+    }
+
+    // Emit message to session room for the runner to pick up
+    emitToSession(sessionId, 'session:message', {
+      session_id: sessionId,
+      message: parsed.data.message,
+    })
+
+    res.json({ status: 'message_sent' })
+  } catch (err) {
+    res.status(500).json({ error: logError('sessions', err) })
+  }
+})
+
+// POST /:sessionId/permission-mode — change permission mode
+router.post('/:sessionId/permission-mode', (req, res) => {
+  try {
+    const projectId = param(req, 'projectId')
+    const sessionId = param(req, 'sessionId')
+
+    const parsed = z.object({
+      mode: z.enum(['default', 'plan', 'acceptEdits', 'bypassPermissions']),
+    }).safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Validation failed', issues: parsed.error.issues })
+      return
+    }
+
+    const session = db
+      .select()
+      .from(sessions)
+      .where(and(eq(sessions.id, sessionId), eq(sessions.project_id, projectId)))
+      .get()
+
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' })
+      return
+    }
+
+    // Emit permission mode change to session room for runner to pick up
+    emitToSession(sessionId, 'session:permission-mode', {
+      session_id: sessionId,
+      mode: parsed.data.mode,
+    })
+
+    res.json({ status: 'permission_mode_updated', mode: parsed.data.mode })
+  } catch (err) {
+    res.status(500).json({ error: logError('sessions', err) })
+  }
+})
+
 // GET /:sessionId/events — list session events
 router.get('/:sessionId/events', (req, res) => {
   try {
