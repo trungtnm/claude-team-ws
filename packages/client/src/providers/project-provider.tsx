@@ -32,10 +32,12 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const projects = data ?? []
   const project = projects.find((p) => p.id === projectId) ?? projects[0] ?? null
 
-  // Auto-select first project if none selected
+  // Auto-select first project if none selected (persist to localStorage)
   useEffect(() => {
     if (!projectId && projects.length > 0) {
-      setProjectIdState(projects[0].id)
+      const id = projects[0].id
+      localStorage.setItem(PROJECT_ID_KEY, id)
+      setProjectIdState(id)
     }
   }, [projectId, projects])
 

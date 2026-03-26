@@ -7,7 +7,7 @@ interface AuthState {
   user: User | null
   isAuthenticated: boolean
   isLoading: boolean
-  login: (apiKey: string, rememberMe?: boolean) => Promise<void>
+  login: (apiKey: string) => Promise<void>
   logout: () => Promise<void>
 }
 
@@ -28,11 +28,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = useCallback(async (apiKey: string) => {
-    // Store API key for Bearer auth
-    localStorage.setItem('auth_token', apiKey)
-
-    // POST /api/auth/login sets HttpOnly cookie (ctw_session JWT)
+    // Verify API key first — only persist after successful auth
     const { user } = await authApi.login(apiKey)
+    localStorage.setItem('auth_token', apiKey)
     setUser(user)
   }, [])
 

@@ -115,6 +115,15 @@ export interface Epic {
   activeSession?: Pick<AgentSession, 'id' | 'status' | 'model'> | null
   prUrl?: string | null
   prStatus?: string | null
+  // Denormalized in detail endpoint
+  sessions?: Array<{
+    id: string
+    status: string
+    agentMailName: string | null
+    model: string
+    startedAt: number | null
+    finishedAt: number | null
+  }>
 }
 
 export interface AgentSession {

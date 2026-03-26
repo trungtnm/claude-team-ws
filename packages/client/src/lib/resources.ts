@@ -135,8 +135,8 @@ export const sessionsApi = {
     api.post<void>(`/sessions/${sessionId}/answer`, data),
   events: (sessionId: string, params?: { afterId?: number; limit?: number; eventType?: string }) => {
     const query = new URLSearchParams()
-    if (params?.afterId) query.set('after_id', String(params.afterId))
-    if (params?.limit) query.set('limit', String(params.limit))
+    if (params?.afterId !== undefined) query.set('after_id', String(params.afterId))
+    if (params?.limit !== undefined) query.set('limit', String(params.limit))
     if (params?.eventType) query.set('event_type', params.eventType)
     const qs = query.toString()
     return api.get<{ events: SessionEvent[]; hasMore: boolean }>(

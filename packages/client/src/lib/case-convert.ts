@@ -3,7 +3,10 @@ export function snakeToCamel(str: string): string {
 }
 
 export function camelToSnake(str: string): string {
-  return str.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)
+  return str
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+    .replace(/([a-z\d])([A-Z])/g, '$1_$2')
+    .toLowerCase()
 }
 
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype'])

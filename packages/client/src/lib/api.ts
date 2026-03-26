@@ -11,8 +11,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const { body, headers: extraHeaders, ...rest } = options
 
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
     ...(extraHeaders as Record<string, string>),
+  }
+
+  // Only set Content-Type when there is a body (avoids unnecessary CORS preflights)
+  if (body) {
+    headers['Content-Type'] = 'application/json'
   }
 
   // Auth token injection from localStorage (API key)

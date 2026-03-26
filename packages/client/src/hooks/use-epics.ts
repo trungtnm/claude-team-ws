@@ -104,18 +104,16 @@ function toEpicDetail(serverEpic: ServerEpic): EpicDetail {
   const children = (raw?.children as Record<string, unknown>[]) ?? []
   const beads = children.map((c) => toUIBead(c, serverEpic.id))
 
-  // Sessions come from the detail endpoint (not in the base Epic type)
-  const rawSessions = (serverEpic as unknown as Record<string, unknown>).sessions as
-    | Array<Record<string, unknown>>
-    | undefined
-  const sessions = (rawSessions ?? []).map((s) => ({
-    id: String(s.id ?? ''),
-    status: String(s.status ?? 'queued'),
-    name: String(s.agentMailName ?? s.model ?? 'Session'),
+  // Sessions come from the detail endpoint
+  const rawSessions = serverEpic.sessions ?? []
+  const sessions = rawSessions.map((s) => ({
+    id: s.id,
+    status: s.status,
+    name: s.agentMailName ?? s.model ?? 'Session',
     duration: s.finishedAt && s.startedAt
-      ? Number(s.finishedAt) - Number(s.startedAt)
+      ? s.finishedAt - s.startedAt
       : s.startedAt
-        ? Math.floor(Date.now() / 1000) - Number(s.startedAt)
+        ? Math.floor(Date.now() / 1000) - s.startedAt
         : 0,
     model: String(s.model ?? 'sonnet'),
   }))
