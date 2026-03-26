@@ -11,6 +11,7 @@ import { users } from './db/schema.js'
 import { seed } from './db/seed.js'
 import { setAuthUserLookup, authenticate } from './middleware/auth.js'
 import { requireProjectMember } from './middleware/project-access.js'
+import { globalLimiter, authLimiter } from './middleware/rate-limit.js'
 import { initSocketIO, setUserLookup } from './services/socket-manager.js'
 import { BeadsService } from './services/beads-service.js'
 import { BvService } from './services/bv-service.js'
@@ -44,6 +45,9 @@ const bvService = new BvService(PROJECT_ROOT)
 
 const app: Express = express()
 
+// Trust proxy headers (Cloudflare Tunnel) so rate limiter sees real client IPs
+app.set('trust proxy', 1)
+
 // Security & parsing middleware
 app.use(helmet())
 app.use(cors({
@@ -55,6 +59,7 @@ app.use(cors({
 app.use(morgan('dev'))
 app.use(express.json())
 app.use(cookieParser())
+app.use(globalLimiter)
 
 // ─── Seed database ───────────────────────────────────────────────────────────
 
@@ -81,7 +86,7 @@ setUserLookup(lookupUser)
 
 // Public routes (no auth)
 app.use('/api/health', healthRouter)
-app.use('/api/auth', createAuthRouter({ db, users }))
+app.use('/api/auth', authLimiter, createAuthRouter({ db, users }))
 
 // Protected routes
 app.use('/api/projects', authenticate, projectsRouter)
