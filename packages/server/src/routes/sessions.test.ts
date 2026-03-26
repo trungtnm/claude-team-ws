@@ -42,7 +42,14 @@ vi.mock('../middleware/auth.js', () => ({
     req.user = { id: 'user_pm', name: 'PM', role: 'pm' }
     next()
   }),
-  requireRole: vi.fn((...roles: string[]) => (_req: any, _res: any, next: any) => next()),
+  requireRole: vi.fn((...roles: string[]) => (req: any, res: any, next: any) => {
+    const user = req.user as { role: string } | undefined
+    if (!user || !roles.includes(user.role)) {
+      res.status(403).json({ error: 'Insufficient permissions' })
+      return
+    }
+    next()
+  }),
 }))
 
 vi.mock('../middleware/project-access.js', () => ({

@@ -1,13 +1,5 @@
-import { test, expect, type Page } from '@playwright/test'
-
-const TEST_API_KEY = process.env.CTW_E2E_API_KEY ?? ''
-
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.getByPlaceholder('ctw-').fill(TEST_API_KEY)
-  await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.waitForURL('**/board', { timeout: 10_000 })
-}
+import { test, expect } from '@playwright/test'
+import { TEST_API_KEY, login } from './helpers'
 
 test.describe('Epic Creation Flow', () => {
   test.beforeEach(async ({ page }) => {
@@ -18,7 +10,6 @@ test.describe('Epic Creation Flow', () => {
   test('create epic dialog has required fields', async ({ page }) => {
     await page.getByRole('button', { name: /Epic/ }).click()
 
-    // Dialog should have title, description, and priority fields
     await expect(page.getByLabel('Title')).toBeVisible()
     await expect(page.getByLabel('Description')).toBeVisible()
   })
@@ -26,11 +17,9 @@ test.describe('Epic Creation Flow', () => {
   test('create epic dialog validates required title', async ({ page }) => {
     await page.getByRole('button', { name: /Epic/ }).click()
 
-    // Try to submit without title
     const createButton = page.getByRole('button', { name: /Create/ })
     if (await createButton.isVisible()) {
       await createButton.click()
-      // Should show validation error or remain on dialog
       await expect(page.getByText('Create Epic')).toBeVisible()
     }
   })

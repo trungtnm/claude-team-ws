@@ -1,13 +1,5 @@
-import { test, expect, type Page } from '@playwright/test'
-
-const TEST_API_KEY = process.env.CTW_E2E_API_KEY ?? ''
-
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.getByPlaceholder('ctw-').fill(TEST_API_KEY)
-  await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.waitForURL('**/board', { timeout: 10_000 })
-}
+import { test, expect } from '@playwright/test'
+import { TEST_API_KEY, login } from './helpers'
 
 test.describe('Agents Page', () => {
   test.beforeEach(async ({ page }) => {
@@ -29,15 +21,12 @@ test.describe('Agents Page', () => {
 
   test('can open new session dialog', async ({ page }) => {
     await page.getByRole('button', { name: /New Session/ }).click()
-    // Dialog should open with prompt input
     await expect(page.getByText('New Session')).toBeVisible()
   })
 
   test('shows empty state when no sessions', async ({ page }) => {
-    // If no sessions exist, should show empty state
     const emptyState = page.getByText('No active sessions')
     const sessionList = page.locator('button[class*="rounded"]')
-    // Either shows empty state OR has session items
     const hasContent = await emptyState.isVisible().catch(() => false) ||
       (await sessionList.count()) > 0
     expect(hasContent).toBeTruthy()
@@ -45,7 +34,6 @@ test.describe('Agents Page', () => {
 
   test('can switch between active and history tabs', async ({ page }) => {
     await page.getByText('History').click()
-    // Tab should be active (has accent color)
     await expect(page.getByText('History')).toBeVisible()
 
     await page.getByText('Active').click()

@@ -23,18 +23,17 @@ router.get('/', (req, res) => {
     const readFilter = req.query.read as string | undefined
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200)
 
-    let rows = db
+    const whereClause = readFilter !== undefined
+      ? and(eq(notifications.user_id, user.id), eq(notifications.read, readFilter === 'true' ? 1 : 0))
+      : eq(notifications.user_id, user.id)
+
+    const rows = db
       .select()
       .from(notifications)
-      .where(eq(notifications.user_id, user.id))
+      .where(whereClause)
       .orderBy(desc(notifications.created_at))
       .limit(limit)
       .all()
-
-    if (readFilter !== undefined) {
-      const isRead = readFilter === 'true' ? 1 : 0
-      rows = rows.filter(r => r.read === isRead)
-    }
 
     const enriched = rows.map(row => ({
       ...row,

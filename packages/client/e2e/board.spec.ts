@@ -1,14 +1,5 @@
-import { test, expect, type Page } from '@playwright/test'
-
-const TEST_API_KEY = process.env.CTW_E2E_API_KEY ?? ''
-
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.getByPlaceholder('ctw-').fill(TEST_API_KEY)
-  await page.getByRole('button', { name: 'Sign in' }).click()
-  // Wait for redirect to board
-  await page.waitForURL('**/board', { timeout: 10_000 })
-}
+import { test, expect } from '@playwright/test'
+import { TEST_API_KEY, login } from './helpers'
 
 test.describe('Board Page', () => {
   test.beforeEach(async ({ page }) => {
@@ -19,7 +10,6 @@ test.describe('Board Page', () => {
   test('renders board with 5 status columns', async ({ page }) => {
     await expect(page.getByText('Epic Board')).toBeVisible()
 
-    // Check all 5 status columns are visible
     await expect(page.getByText('Blocked')).toBeVisible()
     await expect(page.getByText('Ready')).toBeVisible()
     await expect(page.getByText('In Progress')).toBeVisible()
@@ -45,7 +35,6 @@ test.describe('Board Page', () => {
   })
 
   test('notification bell is visible', async ({ page }) => {
-    // Notification dropdown trigger should be present
-    await expect(page.locator('[data-testid="notification-trigger"], button:has(> svg.lucide-bell)')).toBeVisible()
+    await expect(page.getByTestId('notification-trigger')).toBeVisible()
   })
 })

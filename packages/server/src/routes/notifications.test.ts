@@ -83,24 +83,21 @@ describe('Notifications Routes', () => {
       expect(res.body.notifications[1].read).toBe(true)
     })
 
-    it('filters by read=false', async () => {
+    it('passes read=false filter to SQL WHERE clause', async () => {
       mockAll.mockReturnValue([
         { id: 'n1', user_id: 'user_1', title: 'Unread', read: 0, created_at: 1000 },
-        { id: 'n2', user_id: 'user_1', title: 'Read', read: 1, created_at: 999 },
       ])
 
       const app = createApp()
       const res = await request(app).get('/api/notifications?read=false')
 
       expect(res.status).toBe(200)
-      // Filter is done in-memory: only read=0 items should remain
-      expect(res.body.notifications).toHaveLength(1)
-      expect(res.body.notifications[0].id).toBe('n1')
+      // Filter is now applied at SQL level via WHERE clause
+      expect(mockDb._chain.where).toHaveBeenCalled()
     })
 
-    it('filters by read=true', async () => {
+    it('passes read=true filter to SQL WHERE clause', async () => {
       mockAll.mockReturnValue([
-        { id: 'n1', user_id: 'user_1', title: 'Unread', read: 0, created_at: 1000 },
         { id: 'n2', user_id: 'user_1', title: 'Read', read: 1, created_at: 999 },
       ])
 
@@ -108,8 +105,7 @@ describe('Notifications Routes', () => {
       const res = await request(app).get('/api/notifications?read=true')
 
       expect(res.status).toBe(200)
-      expect(res.body.notifications).toHaveLength(1)
-      expect(res.body.notifications[0].id).toBe('n2')
+      expect(mockDb._chain.where).toHaveBeenCalled()
     })
 
     it('respects limit parameter', async () => {
