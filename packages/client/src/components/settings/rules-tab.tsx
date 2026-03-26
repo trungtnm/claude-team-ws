@@ -23,6 +23,8 @@ import {
   SelectItem,
 } from '@/components/ui/select'
 import { useRules, useCreateRule, useUpdateRule } from '@/hooks/use-settings'
+import { rulesApi } from '@/lib/resources'
+import { useProject } from '@/providers/project-provider'
 import type { KnowledgeRule, RuleCategory, RuleMaturity } from '@/types'
 
 const categoryColors: Record<string, string> = {
@@ -49,15 +51,6 @@ function getConfidenceColor(confidence: number): string {
   return 'bg-red-400'
 }
 
-// Simulated AI improvements for demo
-const aiImprovements: Record<string, { improved: string; category: RuleCategory; explanation: string }> = {
-  default: {
-    improved: 'Always use `execFile` instead of `exec` for CLI wrappers to prevent shell injection vulnerabilities. Pass arguments as an array, never concatenate into a command string.',
-    category: 'security',
-    explanation: 'Made the rule more specific: added the "why" (shell injection), and the actionable detail (pass arguments as array). Clearer imperative tone.',
-  },
-}
-
 interface RuleDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -68,6 +61,7 @@ interface RuleDialogProps {
 }
 
 function RuleDialog({ open, onOpenChange, initialValues, mode, onSubmit, isPending }: RuleDialogProps) {
+  const { projectId } = useProject()
   const [ruleText, setRuleText] = useState(initialValues?.ruleText ?? '')
   const [category, setCategory] = useState<RuleCategory>(initialValues?.category ?? 'general')
   const [aiState, setAiState] = useState<'idle' | 'improving' | 'done'>('idle')
@@ -92,18 +86,25 @@ function RuleDialog({ open, onOpenChange, initialValues, mode, onSubmit, isPendi
     onSubmit({ ruleText, category })
   }
 
-  const handleImproveWithAI = useCallback(() => {
+  const handleImproveWithAI = useCallback(async () => {
     if (!ruleText.trim()) {
       toast.error('Write a rule first, then improve it with AI')
       return
     }
     setAiState('improving')
-    // Simulate AI processing — will be replaced with CM API call
-    setTimeout(() => {
-      setAiSuggestion(aiImprovements.default)
+    try {
+      const result = await rulesApi.improve(projectId, ruleText.trim())
+      setAiSuggestion({
+        improved: result.suggestion,
+        category: result.category as RuleCategory,
+        explanation: result.explanation,
+      })
       setAiState('done')
-    }, 1500)
-  }, [ruleText])
+    } catch (err) {
+      setAiState('idle')
+      toast.error(err instanceof Error ? err.message : 'Failed to improve rule')
+    }
+  }, [ruleText, projectId])
 
   const handleAcceptSuggestion = useCallback(() => {
     if (!aiSuggestion) return

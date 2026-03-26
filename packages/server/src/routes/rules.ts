@@ -7,6 +7,7 @@ import { knowledgeRules } from '../db/schema.js'
 import { authenticate, requireRole } from '../middleware/auth.js'
 import { requireProjectMember } from '../middleware/project-access.js'
 import { emitToProject } from '../services/socket-manager.js'
+import { query } from '@anthropic-ai/claude-agent-sdk'
 import { logError } from '../utils/log-error.js'
 
 // Mounted at /api/projects/:projectId/rules
@@ -165,6 +166,97 @@ router.delete('/:ruleId', requireRole('techlead'), (req, res) => {
     res.status(204).send()
   } catch (err) {
       res.status(500).json({ error: logError('rules', err) })
+  }
+})
+
+// POST /improve — use AI to improve rule text
+const improveSchema = z.object({
+  text: z.string().min(1).max(5000),
+})
+
+router.post('/improve', async (req, res) => {
+  try {
+    const parsed = improveSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Validation failed', issues: parsed.error.issues })
+      return
+    }
+
+    const { text } = parsed.data
+    const abortController = new AbortController()
+    const timeout = setTimeout(() => abortController.abort(), 15_000)
+
+    try {
+      const prompt = `You are a knowledge rule editor for AI coding agents. Improve the following rule to be more specific, actionable, and written in clear imperative tone.
+
+Rule to improve:
+"${text}"
+
+Return ONLY a JSON object with exactly these fields:
+- "suggestion": the improved rule text (string)
+- "explanation": brief explanation of what you changed and why (string)
+- "category": the best category for this rule, one of: coding, security, testing, architecture, general (string)
+
+Return ONLY the JSON object, no markdown fences, no extra text.`
+
+      let responseText = ''
+
+      const agentQuery = query({
+        prompt,
+        options: {
+          model: 'claude-sonnet-4-6',
+          maxTurns: 1,
+          systemPrompt: 'You are a knowledge rule improvement assistant. Output only valid JSON.',
+          abortController,
+        } as Parameters<typeof query>[0]['options'],
+      })
+
+      for await (const message of agentQuery) {
+        if (abortController.signal.aborted) break
+        const msg = message as Record<string, unknown>
+        if (msg.type === 'assistant') {
+          const content = (msg.message as Record<string, unknown>)?.content as Array<Record<string, unknown>> | undefined
+          if (content) {
+            for (const block of content) {
+              if (block.type === 'text') {
+                responseText += block.text as string
+              }
+            }
+          }
+        }
+      }
+
+      clearTimeout(timeout)
+
+      // Parse the JSON response
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) {
+        res.status(500).json({ error: 'Failed to parse AI response' })
+        return
+      }
+
+      const result = JSON.parse(jsonMatch[0]) as {
+        suggestion: string
+        explanation: string
+        category: string
+      }
+
+      res.json({
+        suggestion: result.suggestion,
+        explanation: result.explanation,
+        category: result.category,
+      })
+    } catch (err: unknown) {
+      clearTimeout(timeout)
+      const errStr = String(err)
+      if (errStr.includes('aborted') || errStr.includes('AbortError')) {
+        res.status(504).json({ error: 'AI improvement timed out' })
+        return
+      }
+      throw err
+    }
+  } catch (err) {
+    res.status(500).json({ error: logError('rules/improve', err) })
   }
 })
 

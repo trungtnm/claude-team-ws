@@ -183,6 +183,11 @@ export const rulesApi = {
     api.patch<{ rule: KnowledgeRule }>(`/projects/${projectId}/rules/${ruleId}`, data),
   delete: (projectId: string, ruleId: string) =>
     api.delete(`/projects/${projectId}/rules/${ruleId}`),
+  improve: (projectId: string, text: string) =>
+    api.post<{ suggestion: string; explanation: string; category: string }>(
+      `/projects/${projectId}/rules/improve`,
+      { text },
+    ),
 }
 
 // Members
