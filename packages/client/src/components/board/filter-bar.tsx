@@ -57,6 +57,7 @@ export function FilterBar({ epics }: FilterBarProps) {
         <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
         <Input
           placeholder="Search epics..."
+          aria-label="Search epics"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-[220px] pl-9"

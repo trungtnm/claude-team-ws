@@ -337,8 +337,8 @@ export function EpicDetailSheet() {
                       {showComments && (
                         <div className="mt-3 space-y-3 animate-[composer-in_150ms_ease-out]">
                           <div className="flex items-center gap-2 pt-1">
-                            <Input value={commentText} onChange={(e) => setCommentText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAddComment() }} placeholder="Add a comment..." className="h-8 text-xs flex-1" />
-                            <Button size="sm" variant="ghost" className="h-8 px-2" onClick={handleAddComment} disabled={!commentText.trim()}><Send className="h-3.5 w-3.5" /></Button>
+                            <Input value={commentText} onChange={(e) => setCommentText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAddComment() }} placeholder="Add a comment..." aria-label="Add a comment" className="h-8 text-xs flex-1" />
+                            <Button size="sm" variant="ghost" className="h-8 px-2" onClick={handleAddComment} disabled={!commentText.trim()} aria-label="Send comment"><Send className="h-3.5 w-3.5" /></Button>
                           </div>
                         </div>
                       )}

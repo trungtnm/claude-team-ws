@@ -24,6 +24,7 @@ export function GraphControls({ onToggleCriticalPath }: GraphControlsProps) {
         variant="secondary"
         size="icon"
         onClick={() => fitView({ padding: 0.2, duration: 300 })}
+        aria-label="Fit View"
         title="Fit View"
       >
         <Maximize2 className="h-4 w-4" />
@@ -32,6 +33,7 @@ export function GraphControls({ onToggleCriticalPath }: GraphControlsProps) {
         variant="secondary"
         size="icon"
         onClick={() => zoomIn({ duration: 200 })}
+        aria-label="Zoom In"
         title="Zoom In"
       >
         <ZoomIn className="h-4 w-4" />
@@ -40,6 +42,7 @@ export function GraphControls({ onToggleCriticalPath }: GraphControlsProps) {
         variant="secondary"
         size="icon"
         onClick={() => zoomOut({ duration: 200 })}
+        aria-label="Zoom Out"
         title="Zoom Out"
       >
         <ZoomOut className="h-4 w-4" />
@@ -48,6 +51,7 @@ export function GraphControls({ onToggleCriticalPath }: GraphControlsProps) {
         variant="secondary"
         size="icon"
         onClick={handleToggleCriticalPath}
+        aria-label="Toggle Critical Path"
         title="Toggle Critical Path"
         className={cn(criticalPathHighlighted && 'ring-2 ring-accent')}
       >

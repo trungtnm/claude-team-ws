@@ -186,7 +186,7 @@ export function EpicSidebarMeta({
         <h4 className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">Labels</h4>
         <div className="flex flex-wrap gap-1 mb-1.5">
           {localLabels.map((label) => (
-            <Badge key={label} variant="outline" className="text-[10px] px-1.5 py-0 gap-1 group cursor-pointer" onClick={() => onRemoveLabel(label)}>
+            <Badge key={label} variant="outline" className="text-[10px] px-1.5 py-0 gap-1 group cursor-pointer" onClick={() => onRemoveLabel(label)} aria-label={`Remove label ${label}`}>
               {label}
               <X className="h-2.5 w-2.5 opacity-0 group-hover:opacity-100 transition-opacity text-ink-muted" />
             </Badge>
@@ -198,9 +198,10 @@ export function EpicSidebarMeta({
             onChange={(e) => onLabelInputChange(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onAddLabel() } }}
             placeholder="Add label..."
+            aria-label="Add label"
             className="h-6 text-[10px] flex-1"
           />
-          <button type="button" onClick={onAddLabel} className="shrink-0 rounded-[var(--radius-sm)] p-1 text-ink-disabled hover:text-ink-muted transition-colors cursor-pointer">
+          <button type="button" onClick={onAddLabel} aria-label="Add label" className="shrink-0 rounded-[var(--radius-sm)] p-1 text-ink-disabled hover:text-ink-muted transition-colors cursor-pointer">
             <Tag className="h-3 w-3" />
           </button>
         </div>
@@ -213,7 +214,7 @@ export function EpicSidebarMeta({
           <div className="flex items-center gap-1">
             <Input type="date" value={localDueDate} onChange={(e) => onDueDateChange(e.target.value)} className="h-7 text-xs flex-1" autoFocus={showDueDateInput && !localDueDate} />
             {localDueDate && (
-              <button type="button" onClick={() => { onDueDateChange(''); onShowDueDateInput(false); toast('Due date cleared') }} className="shrink-0 p-1 text-ink-disabled hover:text-error transition-colors cursor-pointer">
+              <button type="button" onClick={() => { onDueDateChange(''); onShowDueDateInput(false); toast('Due date cleared') }} aria-label="Clear due date" className="shrink-0 p-1 text-ink-disabled hover:text-error transition-colors cursor-pointer">
                 <X className="h-3 w-3" />
               </button>
             )}
@@ -232,7 +233,7 @@ export function EpicSidebarMeta({
           <div className="flex items-center gap-1">
             <Input value={localEstimate} onChange={(e) => onEstimateChange(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') onSetEstimate() }} placeholder="e.g., 4h, 2d, 1w" className="h-7 text-xs flex-1" autoFocus={showEstimateInput && !localEstimate} />
             {localEstimate && (
-              <button type="button" onClick={() => { onEstimateChange(''); onShowEstimateInput(false); toast('Estimate cleared') }} className="shrink-0 p-1 text-ink-disabled hover:text-error transition-colors cursor-pointer">
+              <button type="button" onClick={() => { onEstimateChange(''); onShowEstimateInput(false); toast('Estimate cleared') }} aria-label="Clear estimate" className="shrink-0 p-1 text-ink-disabled hover:text-error transition-colors cursor-pointer">
                 <X className="h-3 w-3" />
               </button>
             )}

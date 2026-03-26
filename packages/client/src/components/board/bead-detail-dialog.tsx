@@ -195,7 +195,7 @@ export function BeadDetailDialog({ bead, allBeads = [], open, onOpenChange }: Be
                       type="button"
                       onClick={() => handleRemoveDep(dep.id)}
                       className="opacity-0 group-hover:opacity-100 p-0.5 text-ink-disabled hover:text-error transition-all cursor-pointer"
-                      title="Remove dependency"
+                      aria-label="Remove dependency"
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -213,7 +213,7 @@ export function BeadDetailDialog({ bead, allBeads = [], open, onOpenChange }: Be
           <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-ink-muted">Labels</h4>
           <div className="flex flex-wrap gap-1">
             {bead.labels.map((label) => (
-              <Badge key={label} variant="outline" className="text-[11px] gap-1 group cursor-pointer" onClick={() => toast('Label removed')}>
+              <Badge key={label} variant="outline" className="text-[11px] gap-1 group cursor-pointer" onClick={() => toast('Label removed')} aria-label={`Remove label ${label}`}>
                 {label}
                 <X className="h-2.5 w-2.5 opacity-0 group-hover:opacity-100 text-ink-muted" />
               </Badge>
@@ -291,9 +291,10 @@ export function BeadDetailDialog({ bead, allBeads = [], open, onOpenChange }: Be
                 onChange={(e) => setCommentText(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleAddComment() }}
                 placeholder="Add a comment..."
+                aria-label="Add a comment"
                 className="h-8 text-xs flex-1"
               />
-              <Button size="sm" variant="ghost" className="h-8 px-2" onClick={handleAddComment} disabled={!commentText.trim()}>
+              <Button size="sm" variant="ghost" className="h-8 px-2" onClick={handleAddComment} disabled={!commentText.trim()} aria-label="Send comment">
                 <Send className="h-3.5 w-3.5" />
               </Button>
             </div>

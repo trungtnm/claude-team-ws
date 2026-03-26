@@ -164,6 +164,7 @@ export function ProjectTab() {
             <button
               type="button"
               onClick={handleCopyId}
+              aria-label="Copy project ID"
               className="rounded-[var(--radius-sm)] p-1.5 text-ink-muted hover:text-ink hover:bg-surface-elevated transition-colors cursor-pointer"
             >
               {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}

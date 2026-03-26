@@ -268,6 +268,7 @@ export function CaptureComposer() {
                   <button
                     type="button"
                     onClick={() => removeAttachment(att.id)}
+                    aria-label={`Remove attachment ${att.name}`}
                     className="rounded-[var(--radius-sm)] p-1 text-ink-muted hover:bg-surface-overlay hover:text-ink transition-colors"
                   >
                     <X className="h-3.5 w-3.5" />
