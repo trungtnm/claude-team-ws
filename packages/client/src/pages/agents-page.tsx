@@ -55,7 +55,7 @@ export default function AgentsPage() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [newSessionOpen, setNewSessionOpen] = useState(false)
 
-  const { data: allSessions = [] } = useSessionsQuery()
+  const { data: allSessions = [], isLoading, error } = useSessionsQuery()
   const cancelMutation = useCancelSessionMutation()
 
   // Join Socket.IO room for the selected session to get real-time events
@@ -95,6 +95,23 @@ export default function AgentsPage() {
     { id: 'active', label: 'Active', count: running.length + waiting.length + idle.length, dot: 'bg-green-400' },
     { id: 'history', label: 'History', count: completed.length + failed.length },
   ]
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-ink-muted" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3">
+        <p className="text-sm" style={{ color: 'var(--error)' }}>Failed to load data</p>
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{(error as Error).message}</p>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-1 flex-col min-h-0">

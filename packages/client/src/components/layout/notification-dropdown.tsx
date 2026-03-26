@@ -75,36 +75,43 @@ export function NotificationDropdown() {
         <DropdownMenuSeparator />
 
         <div className="max-h-80 overflow-y-auto">
-          {items.map((notification) => {
-            const Icon = typeIcons[notification.type]
-            return (
-              <button
-                key={notification.id}
-                type="button"
-                onClick={() => handleClickNotification(notification)}
-                className={cn(
-                  'flex w-full items-start gap-3 px-2.5 py-2.5 text-left transition-colors cursor-pointer',
-                  'hover:bg-surface-elevated rounded-[var(--radius-sm)]',
-                )}
-              >
-                <Icon className="mt-0.5 h-4 w-4 shrink-0 text-ink-muted" />
-                <div className="flex-1 min-w-0">
-                  <p className={cn('text-sm', notification.read ? 'text-ink-secondary' : 'font-medium text-ink')}>
-                    {notification.title}
-                  </p>
-                  <p className="mt-0.5 text-xs text-ink-muted truncate">
-                    {notification.body}
-                  </p>
-                  <p className="mt-1 text-[10px] text-ink-muted">
-                    {formatDistanceToNow(notification.createdAt * 1000, { addSuffix: true })}
-                  </p>
-                </div>
-                {!notification.read && (
-                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-accent" />
-                )}
-              </button>
-            )
-          })}
+          {items.length === 0 ? (
+            <div className="flex flex-col items-center py-6 text-center">
+              <Bell className="h-8 w-8 mb-2" style={{ color: 'var(--text-disabled)' }} />
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No notifications yet</p>
+            </div>
+          ) : (
+            items.map((notification) => {
+              const Icon = typeIcons[notification.type]
+              return (
+                <button
+                  key={notification.id}
+                  type="button"
+                  onClick={() => handleClickNotification(notification)}
+                  className={cn(
+                    'flex w-full items-start gap-3 px-2.5 py-2.5 text-left transition-colors cursor-pointer',
+                    'hover:bg-surface-elevated rounded-[var(--radius-sm)]',
+                  )}
+                >
+                  <Icon className="mt-0.5 h-4 w-4 shrink-0 text-ink-muted" />
+                  <div className="flex-1 min-w-0">
+                    <p className={cn('text-sm', notification.read ? 'text-ink-secondary' : 'font-medium text-ink')}>
+                      {notification.title}
+                    </p>
+                    <p className="mt-0.5 text-xs text-ink-muted truncate">
+                      {notification.body}
+                    </p>
+                    <p className="mt-1 text-[10px] text-ink-muted">
+                      {formatDistanceToNow(notification.createdAt * 1000, { addSuffix: true })}
+                    </p>
+                  </div>
+                  {!notification.read && (
+                    <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-accent" />
+                  )}
+                </button>
+              )
+            })
+          )}
         </div>
 
         <DropdownMenuSeparator />

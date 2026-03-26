@@ -19,7 +19,7 @@ export function BoardPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [activeEpic, setActiveEpic] = useState<BoardEpic | null>(null)
   const { filterType, filterLabel, searchQuery } = useBoardStore()
-  const { data: epics = [], isLoading } = useEpics()
+  const { data: epics = [], isLoading, error } = useEpics()
   const updateEpic = useUpdateEpic()
   const queryClient = useQueryClient()
   const { projectId } = useProject()
@@ -90,6 +90,15 @@ export function BoardPage() {
     return (
       <div className="flex flex-1 items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-ink-muted" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3">
+        <p className="text-sm" style={{ color: 'var(--error)' }}>Failed to load data</p>
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{(error as Error).message}</p>
       </div>
     )
   }

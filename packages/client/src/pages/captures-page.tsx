@@ -28,7 +28,7 @@ export function CapturesPage() {
   } = useCaptureStore()
 
   // Fetch captures from server
-  const { data: captures = [], isLoading } = useCapturesQuery()
+  const { data: captures = [], isLoading, error } = useCapturesQuery()
   const updateMutation = useUpdateCaptureMutation()
   const deleteMutation = useDeleteCaptureMutation()
 
@@ -143,6 +143,15 @@ export function CapturesPage() {
     { value: 'deferred', label: 'Deferred', count: deferredCaptures.length },
     { value: 'all', label: 'All', count: allCaptures.length },
   ]
+
+  if (error) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3">
+        <p className="text-sm" style={{ color: 'var(--error)' }}>Failed to load data</p>
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{(error as Error).message}</p>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden p-6">
