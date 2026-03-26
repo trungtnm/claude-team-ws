@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from 'react'
+import { useMemo, useCallback, useEffect } from 'react'
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -84,8 +84,12 @@ function DependencyGraphInner({ graphNodes, graphEdges }: DependencyGraphInnerPr
     [graphNodes, graphEdges],
   )
 
-  const [nodes, , onNodesChange] = useNodesState(layoutedNodes)
+  const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges)
+
+  // Sync React Flow state when layout data changes (hooks only use initial value)
+  useEffect(() => { setNodes(layoutedNodes) }, [layoutedNodes, setNodes])
+  useEffect(() => { setEdges(layoutedEdges) }, [layoutedEdges, setEdges])
 
   const criticalNodeIds = useMemo(
     () => new Set(graphNodes.filter((n) => n.role === 'critical').map((n) => n.id)),

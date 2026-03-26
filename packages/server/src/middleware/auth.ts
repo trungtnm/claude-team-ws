@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
+import { randomBytes } from 'crypto'
 
 // JWT secret — must be set in production
 const JWT_SECRET = process.env.JWT_SECRET
@@ -7,9 +8,9 @@ if (!JWT_SECRET || JWT_SECRET === 'change-me-to-a-random-secret') {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('JWT_SECRET must be set to a secure random value in production')
   }
-  console.warn('⚠ JWT_SECRET not set — using insecure default. Set JWT_SECRET in .env for production.')
+  console.warn('⚠ JWT_SECRET not set — generating ephemeral secret (sessions will not survive restart)')
 }
-const jwtSecret = JWT_SECRET || 'dev-only-insecure-default'
+const jwtSecret = JWT_SECRET || randomBytes(32).toString('hex')
 
 export function getJwtSecret(): string {
   return jwtSecret

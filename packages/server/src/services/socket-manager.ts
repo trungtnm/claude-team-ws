@@ -1,6 +1,7 @@
 import type { Server as HttpServer } from 'http'
 import { Server as SocketIOServer, type Socket } from 'socket.io'
 import jwt from 'jsonwebtoken'
+import { parse as parseCookies } from 'cookie'
 import { eq, and } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { projectMembers, sessions } from '../db/schema.js'
@@ -14,11 +15,6 @@ let lookupUser: UserLookup = async () => null
 
 export function setUserLookup(fn: UserLookup): void {
   lookupUser = fn
-}
-
-function parseCookie(header: string, name: string): string | undefined {
-  const match = header.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`))
-  return match?.[1]
 }
 
 export function initSocketIO(httpServer: HttpServer): SocketIOServer {
@@ -59,7 +55,8 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
       // Try cookie
       const cookieHeader = socket.handshake.headers.cookie
       if (cookieHeader) {
-        const sessionToken = parseCookie(cookieHeader, 'ctw_session')
+        const cookies = parseCookies(cookieHeader)
+        const sessionToken = cookies['ctw_session']
         if (sessionToken) {
           try {
             const payload = jwt.verify(sessionToken, getJwtSecret()) as { userId: string }

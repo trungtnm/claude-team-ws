@@ -331,14 +331,15 @@ export function createEpicsRouter({ db, beadsService }: EpicsRouterDeps): Router
   })
 
   const confirmSplitSchema = z.object({
-    tracks: z.array(z.object({
-      title: z.string(),
-      beads: z.array(z.string()),
+    beads: z.array(z.object({
+      title: z.string().min(1),
+      priority: z.number().int().min(0).max(4),
+      description: z.string().optional(),
     })),
   })
 
-  // POST /:epicId/confirm-split — confirm split proposal
-  router.post('/:epicId/confirm-split', requireRole('pm', 'techlead'), (req, res) => {
+  // POST /:epicId/confirm-split — create child beads from split proposal
+  router.post('/:epicId/confirm-split', requireRole('pm', 'techlead'), async (req, res) => {
     try {
       const parsed = confirmSplitSchema.safeParse(req.body)
       if (!parsed.success) {
@@ -360,10 +361,23 @@ export function createEpicsRouter({ db, beadsService }: EpicsRouterDeps): Router
         return
       }
 
+      // Create child beads via br CLI
+      const createdBeadIds: string[] = []
+      for (const bead of parsed.data.beads) {
+        const beadId = await beadsService.create({
+          title: bead.title,
+          priority: bead.priority,
+          description: bead.description,
+        })
+        // Link child to parent epic bead
+        await beadsService.addDependency(beadId, epic.bead_epic_id)
+        createdBeadIds.push(beadId)
+      }
+
       const now = Math.floor(Date.now() / 1000)
       db.update(epics)
         .set({
-          split_proposal: JSON.stringify({ tracks: parsed.data.tracks, confirmed_at: now }),
+          split_proposal: JSON.stringify({ beads: createdBeadIds, confirmed_at: now }),
           updated_at: now,
         })
         .where(eq(epics.id, epicId))
@@ -378,7 +392,7 @@ export function createEpicsRouter({ db, beadsService }: EpicsRouterDeps): Router
       }
 
       emitToProject(projectId, 'epic:updated', enriched)
-      res.json({ epic: enriched })
+      res.json({ epic: enriched, beads: createdBeadIds })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to confirm split'
       res.status(500).json({ error: message })

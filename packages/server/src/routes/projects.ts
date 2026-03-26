@@ -158,6 +158,16 @@ router.patch('/:projectId', requireRole('pm', 'techlead'), (req, res) => {
       return
     }
 
+    // Verify membership
+    const user = req.user as { id: string }
+    const membership = db.select().from(projectMembers)
+      .where(and(eq(projectMembers.project_id, projectId), eq(projectMembers.user_id, user.id)))
+      .get()
+    if (!membership) {
+      res.status(403).json({ error: 'Not a member of this project' })
+      return
+    }
+
     const now = Math.floor(Date.now() / 1000)
     const updates: Record<string, unknown> = { updated_at: now }
     if (parsed.data.name !== undefined) updates.name = parsed.data.name

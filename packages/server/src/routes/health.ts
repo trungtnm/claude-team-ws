@@ -1,12 +1,19 @@
 import { Router, type Router as RouterType } from 'express'
 import { execFile as execFileCb } from 'child_process'
 import { promisify } from 'util'
+import { authenticate, requireRole } from '../middleware/auth.js'
 
 const execFileAsync = promisify(execFileCb)
 
 const router: RouterType = Router()
 
-router.get('/', async (_req, res) => {
+// Public health check — minimal, no infrastructure details
+router.get('/', (_req, res) => {
+  res.json({ status: 'ok' })
+})
+
+// Authenticated diagnostics — detailed infrastructure info (techlead only)
+router.get('/diagnostics', authenticate, requireRole('techlead'), async (_req, res) => {
   const tools = ['claude', 'br', 'bv', 'cass', 'gh', 'git']
   const checks: Record<string, boolean> = {}
 
