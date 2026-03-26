@@ -31,7 +31,7 @@ export function BoardPage() {
       if (
         searchQuery &&
         !epic.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
-        !epic.description.toLowerCase().includes(searchQuery.toLowerCase())
+        !(epic.description ?? '').toLowerCase().includes(searchQuery.toLowerCase())
       ) {
         return false
       }
