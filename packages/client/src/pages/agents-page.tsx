@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Bot, Plus, Search, Maximize2, X,
+  Bot, Plus, Search, Maximize2, X, PanelLeftOpen,
   Loader2,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -54,6 +54,7 @@ export default function AgentsPage() {
   const [activeTab, setActiveTab] = useState<FilterTab>('active')
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [newSessionOpen, setNewSessionOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const { data: allSessions = [], isLoading, error } = useSessionsQuery()
   const cancelMutation = useCancelSessionMutation()
@@ -138,8 +139,11 @@ export default function AgentsPage() {
 
       {/* Split panel */}
       <div className="flex flex-1 min-h-0">
-        {/* Left: Session list */}
-        <div className="flex w-80 shrink-0 flex-col border-r border-edge">
+        {/* Left: Session list — hidden on mobile when collapsed */}
+        <div className={cn(
+          'flex shrink-0 flex-col border-r border-edge transition-all',
+          sidebarOpen ? 'w-full md:w-80' : 'hidden md:flex md:w-80',
+        )}>
           {/* Tabs */}
           <div className="flex items-center border-b border-edge">
             {tabs.map((tab) => (
@@ -193,7 +197,10 @@ export default function AgentsPage() {
                       key={session.id}
                       session={session}
                       selected={session.id === selectedSessionId}
-                      onClick={() => setSelectedSessionId(session.id)}
+                      onClick={() => {
+                        setSelectedSessionId(session.id)
+                        setSidebarOpen(false)
+                      }}
                     />
                   ))}
                 </div>
@@ -202,14 +209,25 @@ export default function AgentsPage() {
           </ScrollArea>
         </div>
 
-        {/* Right: Session detail / stream preview */}
-        <div className="flex flex-1 flex-col min-w-0">
+        {/* Right: Session detail / stream preview — hidden on mobile when sidebar is open */}
+        <div className={cn(
+          'flex flex-1 flex-col min-w-0',
+          sidebarOpen && 'hidden md:flex',
+        )}>
           {selectedSession ? (
             <>
               {/* Session header */}
               <div className="border-b border-edge px-4 py-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="md:hidden h-7 w-7 p-0"
+                      onClick={() => setSidebarOpen(true)}
+                    >
+                      <PanelLeftOpen className="h-4 w-4" />
+                    </Button>
                     <span className="text-sm font-medium text-ink truncate max-w-sm">{selectedSession.prompt}</span>
                     <Badge variant="outline" className="text-[10px]">{selectedSession.model}</Badge>
                     <Badge variant={statusConfig[selectedSession.status]?.badge ?? 'default'}>
@@ -268,7 +286,16 @@ export default function AgentsPage() {
               </div>
             </>
           ) : (
-            <div className="flex flex-1 items-center justify-center">
+            <div className="flex flex-1 flex-col items-center justify-center">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="md:hidden self-start m-3"
+                onClick={() => setSidebarOpen(true)}
+              >
+                <PanelLeftOpen className="h-4 w-4 mr-1.5" />
+                Sessions
+              </Button>
               <div className="text-center">
                 <Bot className="mx-auto h-12 w-12 text-ink-disabled mb-3" />
                 <p className="text-sm text-ink-muted">Select a session to view its stream</p>

@@ -104,16 +104,16 @@ export function BoardPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-4 overflow-hidden p-6">
+    <div className="flex flex-1 flex-col gap-3 overflow-hidden p-3 md:gap-4 md:p-6">
       {/* Top bar */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <h1 className="text-xl font-semibold text-ink">Epic Board</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 md:gap-4">
+          <h1 className="text-lg font-semibold text-ink md:text-xl">Epic Board</h1>
           <FilterBar epics={epics} />
         </div>
-        <Button className="gap-2" onClick={() => setCreateDialogOpen(true)}>
+        <Button size="sm" className="gap-2 md:size-default" onClick={() => setCreateDialogOpen(true)}>
           <Plus className="h-4 w-4" />
-          Epic
+          <span className="hidden sm:inline">Epic</span>
         </Button>
       </div>
 
@@ -124,7 +124,7 @@ export function BoardPage() {
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
-        <div className="grid flex-1 grid-cols-5 gap-4 overflow-x-auto">
+        <div className="grid flex-1 grid-cols-2 gap-3 overflow-x-auto sm:grid-cols-3 md:gap-4 lg:grid-cols-5">
           {columns.map((column) => (
             <BoardColumn
               key={column.id}

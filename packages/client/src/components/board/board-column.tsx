@@ -16,7 +16,7 @@ export function BoardColumn({ columnId, label, epics }: BoardColumnProps) {
     <div
       ref={setNodeRef}
       className={cn(
-        'flex min-w-[240px] flex-col rounded-[var(--radius-lg)] border border-edge bg-surface-base/50 p-3 transition-colors',
+        'flex min-w-[180px] flex-col rounded-[var(--radius-lg)] border border-edge bg-surface-base/50 p-2 transition-colors md:min-w-[220px] md:p-3',
         isOver && 'border-accent/60 bg-accent/5',
       )}
     >
