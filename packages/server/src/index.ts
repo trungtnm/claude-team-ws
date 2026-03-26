@@ -105,9 +105,6 @@ app.use('/api/projects/:projectId/beads-sync', authenticate, requireProjectMembe
 // User-scoped routes (no project context)
 app.use('/api/notifications', authenticate, notificationsRouter)
 
-// Session-scoped routes (session ID in path, not project-scoped)
-app.use('/api/sessions', authenticate, sessionsRouter)
-
 // ─── Global Error Handler ────────────────────────────────────────────────────
 
 // Catch-all for unhandled route errors — MUST be registered after all routes

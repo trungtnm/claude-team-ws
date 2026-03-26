@@ -24,13 +24,14 @@ export function useSessionsQuery(filters?: { status?: string; epicId?: string })
 }
 
 export function useSessionQuery(sessionId: string | undefined) {
+  const { projectId } = useProject()
   return useQuery({
     queryKey: queryKeys.sessions.detail(sessionId!),
     queryFn: async () => {
-      const { session } = await sessionsApi.get(sessionId!)
+      const { session } = await sessionsApi.get(projectId, sessionId!)
       return session
     },
-    enabled: !!sessionId,
+    enabled: !!sessionId && !!projectId,
     refetchInterval: 3_000,
     refetchIntervalInBackground: false,
   })
@@ -40,13 +41,14 @@ export function useSessionEventsQuery(
   sessionId: string | undefined,
   params?: { afterId?: number; eventType?: string },
 ) {
+  const { projectId } = useProject()
   return useQuery({
     queryKey: queryKeys.sessions.events(sessionId!, params),
     queryFn: async () => {
-      const result = await sessionsApi.events(sessionId!, params)
+      const result = await sessionsApi.events(projectId, sessionId!, params)
       return result
     },
-    enabled: !!sessionId,
+    enabled: !!sessionId && !!projectId,
     refetchInterval: 2_000,
     refetchIntervalInBackground: false,
   })
@@ -80,7 +82,7 @@ export function useCancelSessionMutation() {
   const { projectId } = useProject()
 
   return useMutation({
-    mutationFn: (sessionId: string) => sessionsApi.cancel(sessionId),
+    mutationFn: (sessionId: string) => sessionsApi.cancel(projectId, sessionId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all(projectId) })
     },
@@ -96,7 +98,7 @@ export function useResumeSessionMutation() {
 
   return useMutation({
     mutationFn: ({ sessionId, prompt }: { sessionId: string; prompt: string }) =>
-      sessionsApi.resume(sessionId, { prompt }),
+      sessionsApi.resume(projectId, sessionId, { prompt }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all(projectId) })
     },
@@ -112,7 +114,7 @@ export function useAnswerSessionMutation() {
 
   return useMutation({
     mutationFn: ({ sessionId, answer }: { sessionId: string; answer: string }) =>
-      sessionsApi.answer(sessionId, { answer }),
+      sessionsApi.answer(projectId, sessionId, { answer }),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all(projectId) })
       queryClient.invalidateQueries({

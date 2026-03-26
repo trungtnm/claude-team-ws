@@ -123,24 +123,24 @@ export const sessionsApi = {
     const qs = query.toString()
     return api.get<{ sessions: AgentSession[] }>(`/projects/${projectId}/sessions${qs ? `?${qs}` : ''}`)
   },
-  get: (sessionId: string) =>
-    api.get<{ session: AgentSession }>(`/sessions/${sessionId}`),
+  get: (projectId: string, sessionId: string) =>
+    api.get<{ session: AgentSession }>(`/projects/${projectId}/sessions/${sessionId}`),
   create: (projectId: string, data: { epicId?: string; model?: string; name?: string; prompt: string }) =>
     api.post<{ session: AgentSession }>(`/projects/${projectId}/sessions`, data),
-  cancel: (sessionId: string) =>
-    api.post<void>(`/sessions/${sessionId}/cancel`),
-  resume: (sessionId: string, data: { prompt: string }) =>
-    api.post<{ session: AgentSession }>(`/sessions/${sessionId}/resume`, data),
-  answer: (sessionId: string, data: { answer: string }) =>
-    api.post<void>(`/sessions/${sessionId}/answer`, data),
-  events: (sessionId: string, params?: { afterId?: number; limit?: number; eventType?: string }) => {
+  cancel: (projectId: string, sessionId: string) =>
+    api.post<void>(`/projects/${projectId}/sessions/${sessionId}/cancel`),
+  resume: (projectId: string, sessionId: string, data: { prompt: string }) =>
+    api.post<{ session: AgentSession }>(`/projects/${projectId}/sessions/${sessionId}/resume`, data),
+  answer: (projectId: string, sessionId: string, data: { answer: string }) =>
+    api.post<void>(`/projects/${projectId}/sessions/${sessionId}/answer`, data),
+  events: (projectId: string, sessionId: string, params?: { afterId?: number; limit?: number; eventType?: string }) => {
     const query = new URLSearchParams()
     if (params?.afterId !== undefined) query.set('after_id', String(params.afterId))
     if (params?.limit !== undefined) query.set('limit', String(params.limit))
     if (params?.eventType) query.set('event_type', params.eventType)
     const qs = query.toString()
     return api.get<{ events: SessionEvent[]; hasMore: boolean }>(
-      `/sessions/${sessionId}/events${qs ? `?${qs}` : ''}`,
+      `/projects/${projectId}/sessions/${sessionId}/events${qs ? `?${qs}` : ''}`,
     )
   },
 }

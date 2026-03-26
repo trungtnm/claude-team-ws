@@ -1,16 +1,18 @@
 import { useQuery } from '@tanstack/react-query'
 import { sessionsApi } from '@/lib/resources'
+import { useProject } from '@/providers/project-provider'
 
 /**
  * Fetch the latest question text for a session that's waiting for input.
  * Returns the question text if found, null otherwise.
  */
 export function useLatestQuestion(sessionId: string | undefined, enabled = true) {
+  const { projectId } = useProject()
   return useQuery({
     queryKey: ['session-question', sessionId],
     queryFn: async () => {
       if (!sessionId) return null
-      const { events } = await sessionsApi.events(sessionId, { limit: 10 })
+      const { events } = await sessionsApi.events(projectId, sessionId, { limit: 10 })
 
       // Walk events in reverse to find the latest question
       for (let i = events.length - 1; i >= 0; i--) {
@@ -49,7 +51,7 @@ export function useLatestQuestion(sessionId: string | undefined, enabled = true)
 
       return null
     },
-    enabled: !!sessionId && enabled,
+    enabled: !!sessionId && !!projectId && enabled,
     staleTime: 10_000,
     refetchInterval: 15_000,
   })
