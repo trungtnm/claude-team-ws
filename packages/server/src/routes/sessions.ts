@@ -50,6 +50,7 @@ router.get('/', (req, res) => {
 
 const createSessionSchema = z.object({
   epic_id: z.string().optional(),
+  name: z.string().max(200).optional(),
   prompt: z.string().min(1).max(50000),
   model: z.enum(['sonnet', 'opus', 'haiku']).optional(),
 })
@@ -65,7 +66,7 @@ router.post('/', (req, res) => {
 
     const projectId = param(req, 'projectId')
     const user = req.user!
-    const { epic_id, prompt, model } = parsed.data
+    const { epic_id, name, prompt, model } = parsed.data
 
     // Check concurrency limits
     const project = db.select().from(projects).where(eq(projects.id, projectId)).get()
@@ -96,6 +97,7 @@ router.post('/', (req, res) => {
       project_id: projectId,
       epic_id: epic_id ?? null,
       user_id: user.id,
+      name: name ?? null,
       model: model ?? 'sonnet',
       status: 'queued',
       prompt,

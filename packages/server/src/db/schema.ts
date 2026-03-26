@@ -99,6 +99,7 @@ export const sessions = sqliteTable('sessions', {
   project_id: text('project_id').notNull().references(() => projects.id),
   epic_id: text('epic_id').references(() => epics.id),
   user_id: text('user_id').notNull().references(() => users.id),
+  name: text('name'),
   claude_session_id: text('claude_session_id'),
   agent_mail_name: text('agent_mail_name'),
   model: text('model').notNull().default('sonnet'),

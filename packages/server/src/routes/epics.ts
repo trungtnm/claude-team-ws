@@ -1,5 +1,5 @@
 import { Router, type Router as RouterType, type Request } from 'express'
-import { eq, and, desc } from 'drizzle-orm'
+import { eq, and, desc, inArray } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
@@ -40,7 +40,36 @@ export function createEpicsRouter({ db, beadsService }: EpicsRouterDeps): Router
         .orderBy(desc(epics.created_at))
         .all()
 
-      // Hydrate with bead data
+      // Fetch active sessions for all epics in one query
+      const epicIds = rows.map((r) => r.id)
+      const activeSessions = epicIds.length > 0
+        ? db
+            .select({
+              id: sessions.id,
+              epic_id: sessions.epic_id,
+              status: sessions.status,
+              model: sessions.model,
+            })
+            .from(sessions)
+            .where(
+              and(
+                inArray(sessions.epic_id, epicIds),
+                inArray(sessions.status, ['queued', 'running', 'waiting_input']),
+              ),
+            )
+            .orderBy(desc(sessions.created_at))
+            .all()
+        : []
+
+      // Build a map: epicId → most recent active session
+      const activeSessionByEpic = new Map<string, { id: string; status: string; model: string }>()
+      for (const s of activeSessions) {
+        if (s.epic_id && !activeSessionByEpic.has(s.epic_id)) {
+          activeSessionByEpic.set(s.epic_id, { id: s.id, status: s.status, model: s.model })
+        }
+      }
+
+      // Hydrate with bead data + active session
       const enriched = await Promise.all(
         rows.map(async (epic) => {
           let beadData: Record<string, unknown> | null = null
@@ -55,6 +84,7 @@ export function createEpicsRouter({ db, beadsService }: EpicsRouterDeps): Router
             scope_analysis: epic.scope_analysis ? JSON.parse(epic.scope_analysis) : null,
             split_proposal: epic.split_proposal ? JSON.parse(epic.split_proposal) : null,
             bead: beadData,
+            activeSession: activeSessionByEpic.get(epic.id) ?? null,
           }
         }),
       )
@@ -133,6 +163,7 @@ export function createEpicsRouter({ db, beadsService }: EpicsRouterDeps): Router
         scope_analysis: null,
         split_proposal: null,
         bead: beadData,
+        activeSession: null,
       }
 
       emitToProject(projectId, 'epic:created', enriched)
@@ -168,6 +199,11 @@ export function createEpicsRouter({ db, beadsService }: EpicsRouterDeps): Router
         .orderBy(desc(sessions.created_at))
         .all()
 
+      // Find active session (running/queued/waiting_input)
+      const activeSession = epicSessions.find((s) =>
+        ['queued', 'running', 'waiting_input'].includes(s.status),
+      )
+
       let beadData: Record<string, unknown> | null = null
       try {
         beadData = await beadsService.show(epic.bead_epic_id)
@@ -182,6 +218,9 @@ export function createEpicsRouter({ db, beadsService }: EpicsRouterDeps): Router
         split_proposal: epic.split_proposal ? JSON.parse(epic.split_proposal) : null,
         bead: beadData,
         sessions: epicSessions,
+        activeSession: activeSession
+          ? { id: activeSession.id, status: activeSession.status, model: activeSession.model }
+          : null,
       }
 
       res.json({ epic: enriched })
@@ -262,7 +301,7 @@ export function createEpicsRouter({ db, beadsService }: EpicsRouterDeps): Router
         }
       }
 
-      // Re-fetch with hydrated bead data
+      // Re-fetch with hydrated bead data + active session
       const updated = db.select().from(epics).where(eq(epics.id, epicId)).get()!
       let beadData: Record<string, unknown> | null = null
       try {
@@ -271,12 +310,24 @@ export function createEpicsRouter({ db, beadsService }: EpicsRouterDeps): Router
         // Service may be unavailable
       }
 
+      const activeSession = db
+        .select({ id: sessions.id, status: sessions.status, model: sessions.model })
+        .from(sessions)
+        .where(
+          and(
+            eq(sessions.epic_id, epicId),
+            inArray(sessions.status, ['queued', 'running', 'waiting_input']),
+          ),
+        )
+        .get()
+
       const enriched = {
         ...updated,
         git_branches: JSON.parse(updated.git_branches),
         scope_analysis: updated.scope_analysis ? JSON.parse(updated.scope_analysis) : null,
         split_proposal: updated.split_proposal ? JSON.parse(updated.split_proposal) : null,
         bead: beadData,
+        activeSession: activeSession ?? null,
       }
 
       emitToProject(projectId, 'epic:updated', enriched)
