@@ -2,12 +2,14 @@ import { Outlet } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { Header } from './header'
 import { AgentAlertBar } from './agent-alert-bar'
+import { BeadsSyncBanner } from './beads-sync-banner'
 
 export function Layout() {
   return (
     <div className="flex h-screen flex-col">
       <Header />
       <AgentAlertBar />
+      <BeadsSyncBanner />
       <main className="flex-1 overflow-auto">
         <Outlet />
       </main>

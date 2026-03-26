@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, Link } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import { Layout } from './layout/layout'
 import { useSocketConnection } from '@/hooks/use-socket-connection'
@@ -36,6 +36,15 @@ export function AppShell() {
           <Route path="/graph" element={<GraphPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/review/:sessionId" element={<PrReviewPage />} />
+          <Route path="*" element={
+            <div className="flex flex-col items-center justify-center h-full gap-4">
+              <p className="text-4xl font-bold" style={{ color: 'var(--text-muted)' }}>404</p>
+              <p style={{ color: 'var(--text-secondary)' }}>Page not found</p>
+              <Link to="/board" className="text-sm underline" style={{ color: 'var(--accent)' }}>
+                Go to Board
+              </Link>
+            </div>
+          } />
         </Route>
       </Routes>
     </Suspense>
