@@ -1,8 +1,20 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, X } from 'lucide-react'
+import { AlertTriangle, MessageCircleQuestion, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useSessionsQuery } from '@/hooks/use-sessions'
+import { useLatestQuestion } from '@/hooks/use-waiting-questions'
+
+function AlertBarQuestion({ sessionId }: { sessionId: string }) {
+  const { data: questionText } = useLatestQuestion(sessionId)
+  if (!questionText) return null
+  const preview = questionText.length > 120 ? `${questionText.slice(0, 120)}...` : questionText
+  return (
+    <span className="truncate text-sm text-ink-secondary italic">
+      &ldquo;{preview}&rdquo;
+    </span>
+  )
+}
 
 export function AgentAlertBar() {
   const navigate = useNavigate()
@@ -21,20 +33,15 @@ export function AgentAlertBar() {
 
   if (waitingSessions.length === 1) {
     const session = waitingSessions[0]
-    const promptPreview = session.prompt.length > 80
-      ? `${session.prompt.slice(0, 80)}...`
-      : session.prompt
 
     return (
       <div className="animate-pulse-warm mx-4 mt-2 rounded-[var(--radius-md)] border border-amber-500/30 bg-amber-500/10 p-3">
         <div className="flex items-center gap-3">
-          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-500" />
+          <MessageCircleQuestion className="h-5 w-5 shrink-0 text-amber-500" />
           <span className="text-xs font-semibold tracking-wide text-amber-500">
             AGENT WAITING
           </span>
-          <span className="truncate text-sm text-ink-secondary">
-            {promptPreview}
-          </span>
+          <AlertBarQuestion sessionId={session.id} />
           <Button
             variant="outline"
             size="sm"
