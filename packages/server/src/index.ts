@@ -1,0 +1,115 @@
+import { createServer } from 'http'
+import express, { type Express } from 'express'
+import cors from 'cors'
+import helmet from 'helmet'
+import morgan from 'morgan'
+import cookieParser from 'cookie-parser'
+import { eq } from 'drizzle-orm'
+
+import { db } from './db/index.js'
+import { users } from './db/schema.js'
+import { seed } from './db/seed.js'
+import { setAuthUserLookup, authenticate } from './middleware/auth.js'
+import { requireProjectMember } from './middleware/project-access.js'
+import { initSocketIO, setUserLookup } from './services/socket-manager.js'
+import { BeadsService } from './services/beads-service.js'
+import { BvService } from './services/bv-service.js'
+
+// Routes
+import healthRouter from './routes/health.js'
+import { createAuthRouter } from './routes/auth.js'
+import projectsRouter from './routes/projects.js'
+import membersRouter from './routes/members.js'
+import reposRouter from './routes/repos.js'
+import { createCapturesRouter } from './routes/captures.js'
+import { createEpicsRouter } from './routes/epics.js'
+import sessionsRouter from './routes/sessions.js'
+import { createGraphRouter } from './routes/graph.js'
+import rulesRouter from './routes/rules.js'
+import webhooksRouter from './routes/webhooks.js'
+import notificationsRouter from './routes/notifications.js'
+import reviewsRouter from './routes/reviews.js'
+import mailRouter from './routes/mail.js'
+import { createBeadsSyncRouter } from './routes/beads-sync.js'
+
+const PORT = parseInt(process.env.PORT || '3000', 10)
+const PROJECT_ROOT = process.env.PROJECT_ROOT || '.'
+
+// ─── Services ────────────────────────────────────────────────────────────────
+
+const beadsService = new BeadsService(PROJECT_ROOT)
+const bvService = new BvService(PROJECT_ROOT)
+
+// ─── Express App ─────────────────────────────────────────────────────────────
+
+const app: Express = express()
+
+// Security & parsing middleware
+app.use(helmet())
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production'
+    ? false
+    : ['http://localhost:5173', 'http://localhost:5174'],
+  credentials: true,
+}))
+app.use(morgan('dev'))
+app.use(express.json())
+app.use(cookieParser())
+
+// ─── Seed database ───────────────────────────────────────────────────────────
+
+seed()
+
+// ─── User lookup (shared by auth middleware + socket.io) ─────────────────────
+
+async function lookupUser(criteria: { apiKey?: string; userId?: string }) {
+  const { apiKey, userId } = criteria
+  if (apiKey) {
+    const row = db.select().from(users).where(eq(users.api_key, apiKey)).get()
+    if (row) return { id: row.id, name: row.name, role: row.role }
+  } else if (userId) {
+    const row = db.select().from(users).where(eq(users.id, userId)).get()
+    if (row) return { id: row.id, name: row.name, role: row.role }
+  }
+  return null
+}
+
+setAuthUserLookup(lookupUser)
+setUserLookup(lookupUser)
+
+// ─── Routes ──────────────────────────────────────────────────────────────────
+
+// Public routes (no auth)
+app.use('/api/health', healthRouter)
+app.use('/api/auth', createAuthRouter({ db, users }))
+
+// Protected routes
+app.use('/api/projects', authenticate, projectsRouter)
+app.use('/api/projects/:projectId/members', authenticate, requireProjectMember, membersRouter)
+app.use('/api/projects/:projectId/repos', authenticate, requireProjectMember, reposRouter)
+app.use('/api/projects/:projectId/captures', authenticate, requireProjectMember, createCapturesRouter({ db, beadsService }))
+app.use('/api/projects/:projectId/epics', authenticate, requireProjectMember, createEpicsRouter({ db, beadsService }))
+app.use('/api/projects/:projectId/sessions', authenticate, requireProjectMember, sessionsRouter)
+app.use('/api/projects/:projectId/graph', authenticate, requireProjectMember, createGraphRouter({ bvService }))
+app.use('/api/projects/:projectId/rules', authenticate, requireProjectMember, rulesRouter)
+app.use('/api/projects/:projectId/webhooks', authenticate, requireProjectMember, webhooksRouter)
+app.use('/api/projects/:projectId/reviews', authenticate, requireProjectMember, reviewsRouter)
+app.use('/api/projects/:projectId/mail', authenticate, requireProjectMember, mailRouter)
+app.use('/api/projects/:projectId/beads-sync', authenticate, requireProjectMember, createBeadsSyncRouter({ beadsService, projectRoot: PROJECT_ROOT }))
+
+// User-scoped routes (no project context)
+app.use('/api/notifications', authenticate, notificationsRouter)
+
+// Session-scoped routes (session ID in path, not project-scoped)
+app.use('/api/sessions', authenticate, sessionsRouter)
+
+// ─── HTTP Server + Socket.IO ─────────────────────────────────────────────────
+
+const httpServer = createServer(app)
+initSocketIO(httpServer)
+
+httpServer.listen(PORT, () => {
+  console.log(`Server listening on http://localhost:${PORT}`)
+})
+
+export { app, httpServer }
