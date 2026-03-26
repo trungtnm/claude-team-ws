@@ -14,7 +14,13 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { formatDistanceToNow } from 'date-fns'
-import type { Capture } from '@/types'
+import {
+  useCreateSessionMutation,
+  useSessionQuery,
+  useSessionEventsQuery,
+  useAnswerSessionMutation,
+} from '@/hooks/use-sessions'
+import type { Capture, SessionEvent } from '@/types'
 
 interface TriageDialogProps {
   captures: Capture[]
@@ -25,168 +31,147 @@ interface TriageDialogProps {
 
 type TriagePhase = 'review' | 'processing' | 'question' | 'complete'
 
-interface TriageQuestion {
-  id: string
+interface ParsedQuestion {
   text: string
   options: string[]
   context?: string
 }
 
-interface TriageResult {
-  epicTitle: string
-  epicDescription: string
-  priority: string
-  type: string
-  beads: { title: string; type: string; priority: string }[]
-  labels: string[]
-  estimatedEffort: string
-}
-
-// Simulated questions the agent might ask during triage
-const simulatedQuestions: TriageQuestion[] = [
-  {
-    id: 'q1',
-    text: 'Based on the captures, this looks like it involves both frontend and backend changes. Should I scope the Epic to cover the full stack, or split into separate frontend/backend Epics?',
-    options: ['Full-stack Epic (single branch)', 'Split into Frontend + Backend Epics', 'Let the agent decide based on complexity'],
-    context: 'Analyzing code impact across packages/client and packages/server...',
-  },
-  {
-    id: 'q2',
-    text: 'I found 3 related patterns in the codebase that could be affected. Should I include regression testing as a dedicated Bead, or handle it within each implementation Bead?',
-    options: ['Dedicated testing Bead (recommended for this scope)', 'Test within each Bead', 'Skip — existing test coverage is sufficient'],
-    context: 'Found 12 test files with related coverage. CASS search returned 3 similar past sessions.',
-  },
-]
-
-// Simulated triage result
-const simulatedResult: TriageResult = {
-  epicTitle: 'Agent Session File Change Visibility',
-  epicDescription: 'Add file change summary to agent session cards and stream view. Show modified files count, list of changed paths, and diff stats before PR review.',
-  priority: 'P1',
-  type: 'Feature',
-  beads: [
-    { title: 'Add file tracking to session events storage', type: 'task', priority: 'P1' },
-    { title: 'Session card — file change summary component', type: 'task', priority: 'P1' },
-    { title: 'Stream view — file list sidebar panel', type: 'task', priority: 'P2' },
-    { title: 'Integration tests for file tracking', type: 'task', priority: 'P2' },
-  ],
-  labels: ['frontend', 'backend', 'agent'],
-  estimatedEffort: '~4 hours agent time',
-}
-
-const processingSteps = [
-  'Analyzing capture content...',
-  'Searching codebase for related patterns...',
-  'Querying CASS for similar past sessions...',
-  'Evaluating scope and dependencies...',
-  'Generating Epic structure...',
-]
-
 export function TriageDialog({ captures, open, onOpenChange, onTriaged }: TriageDialogProps) {
   const navigate = useNavigate()
   const [phase, setPhase] = useState<TriagePhase>('review')
-  const [currentStep, setCurrentStep] = useState(0)
-  const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0)
+  const [sessionId, setSessionId] = useState<string | null>(null)
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null)
-  const [answers, setAnswers] = useState<Record<string, string>>({})
-  const [result, setResult] = useState<TriageResult | null>(null)
+  const [currentQuestion, setCurrentQuestion] = useState<ParsedQuestion | null>(null)
 
-  // Reset when dialog opens with new captures
+  const createSession = useCreateSessionMutation()
+  const answerMutation = useAnswerSessionMutation()
+  const { data: session } = useSessionQuery(sessionId ?? undefined)
+  const { data: eventsData } = useSessionEventsQuery(sessionId ?? undefined)
+
+  // Reset when dialog opens
   useEffect(() => {
     if (open) {
       setPhase('review')
-      setCurrentStep(0)
-      setCurrentQuestionIdx(0)
+      setSessionId(null)
       setSelectedAnswer(null)
-      setAnswers({})
-      setResult(null)
+      setCurrentQuestion(null)
     }
   }, [open])
 
-  // Simulate processing steps
+  // Watch session status for phase transitions
   useEffect(() => {
-    if (phase !== 'processing') return
+    if (!session) return
 
-    if (currentStep < processingSteps.length) {
-      const timer = setTimeout(() => {
-        setCurrentStep((s) => s + 1)
-      }, 800 + Math.random() * 600)
-      return () => clearTimeout(timer)
+    if (session.status === 'waiting_input' && phase !== 'question') {
+      // Session is asking a question — find it in events
+      const question = extractLatestQuestion(eventsData?.events ?? [])
+      if (question) {
+        setCurrentQuestion(question)
+        setPhase('question')
+      }
+    } else if (session.status === 'completed' && phase !== 'complete') {
+      setPhase('complete')
+    } else if (session.status === 'failed' && phase !== 'complete') {
+      toast.error('Triage session failed')
+      setPhase('complete')
     }
-
-    // After processing steps, show first question
-    const timer = setTimeout(() => {
-      setPhase('question')
-    }, 500)
-    return () => clearTimeout(timer)
-  }, [phase, currentStep])
+  }, [session?.status, phase, eventsData?.events])
 
   const handleStartTriage = useCallback(() => {
+    const captureTexts = captures
+      .map((c, i) => `Capture ${i + 1}: "${c.text}"`)
+      .join('\n')
+
+    const prompt = `Triage the following captures into an Epic with Beads breakdown. Analyze each capture, determine the scope, and create a structured Epic.
+
+${captureTexts}
+
+For each capture:
+1. Analyze what change is being requested
+2. Determine priority (P0-P3) and type (feature/bug/task)
+3. Create an Epic title and description
+4. Break down into Beads (sub-tasks)
+5. Suggest labels
+
+Output a summary of the Epic and Beads you would create.`
+
     setPhase('processing')
-    setCurrentStep(0)
-  }, [])
+    createSession.mutate(
+      { prompt, model: 'sonnet', name: `Triage: ${captures.length} capture(s)` },
+      {
+        onSuccess: (data) => {
+          setSessionId(data.session.id)
+        },
+        onError: (err) => {
+          toast.error(`Failed to start triage: ${err.message}`)
+          setPhase('review')
+        },
+      },
+    )
+  }, [captures, createSession])
 
   const handleAnswerQuestion = useCallback(() => {
-    if (!selectedAnswer) return
+    if (!selectedAnswer || !sessionId) return
 
-    const question = simulatedQuestions[currentQuestionIdx]
-    const newAnswers = { ...answers, [question.id]: selectedAnswer }
-    setAnswers(newAnswers)
-    setSelectedAnswer(null)
-
-    if (currentQuestionIdx < simulatedQuestions.length - 1) {
-      // Show brief processing, then next question
-      setPhase('processing')
-      setCurrentStep(processingSteps.length - 1) // Skip to last step
-      setTimeout(() => {
-        setCurrentQuestionIdx((i) => i + 1)
-        setPhase('question')
-      }, 1200)
-    } else {
-      // All questions answered — show result
-      setPhase('processing')
-      setCurrentStep(processingSteps.length - 1)
-      setTimeout(() => {
-        setResult(simulatedResult)
-        setPhase('complete')
-      }, 1500)
-    }
-  }, [selectedAnswer, currentQuestionIdx, answers])
+    answerMutation.mutate(
+      { sessionId, answer: selectedAnswer },
+      {
+        onSuccess: () => {
+          setSelectedAnswer(null)
+          setCurrentQuestion(null)
+          setPhase('processing')
+        },
+        onError: (err) => {
+          toast.error(`Failed to send answer: ${err.message}`)
+        },
+      },
+    )
+  }, [selectedAnswer, sessionId, answerMutation])
 
   const handleSkipQuestion = useCallback(() => {
-    setSelectedAnswer(null)
-    if (currentQuestionIdx < simulatedQuestions.length - 1) {
-      setCurrentQuestionIdx((i) => i + 1)
-    } else {
-      setPhase('processing')
-      setCurrentStep(processingSteps.length - 1)
-      setTimeout(() => {
-        setResult(simulatedResult)
-        setPhase('complete')
-      }, 1500)
-    }
-  }, [currentQuestionIdx])
+    if (!sessionId) return
+    answerMutation.mutate(
+      { sessionId, answer: 'Let the agent decide' },
+      {
+        onSuccess: () => {
+          setSelectedAnswer(null)
+          setCurrentQuestion(null)
+          setPhase('processing')
+        },
+      },
+    )
+  }, [sessionId, answerMutation])
 
   const handleClose = useCallback(() => {
     onTriaged(captures.map((c) => c.id))
     onOpenChange(false)
-    toast.success('Epic created and added to board')
+    toast.success('Triage complete')
   }, [captures, onTriaged, onOpenChange])
 
   const handleViewOnBoard = useCallback(() => {
     onTriaged(captures.map((c) => c.id))
     onOpenChange(false)
-    toast.success('Epic created and added to board')
-    // Navigate to board with the new epic highlighted
-    navigate('/board?epic=epic-new-triage')
+    toast.success('Triage complete — view on board')
+    navigate('/board')
   }, [captures, onTriaged, onOpenChange, navigate])
 
   const handleStartSession = useCallback(() => {
     onTriaged(captures.map((c) => c.id))
     onOpenChange(false)
-    toast.success('Epic created — starting agent session...')
+    toast.success('Triage complete — opening agent sessions')
     navigate('/agents')
   }, [captures, onTriaged, onOpenChange, navigate])
+
+  // Extract assistant messages for processing display
+  const events = eventsData?.events ?? []
+  const assistantMessages = events
+    .filter((e: SessionEvent) => e.eventType === 'assistant' || e.eventType === 'system')
+    .map((e: SessionEvent) => {
+      const data = typeof e.data === 'string' ? safeParseJSON(e.data) : e.data as Record<string, unknown>
+      return (data?.content as string) ?? ''
+    })
+    .filter(Boolean)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -216,8 +201,8 @@ export function TriageDialog({ captures, open, onOpenChange, onTriaged }: Triage
           <DialogDescription>
             {phase === 'review' && `Review ${captures.length} capture${captures.length > 1 ? 's' : ''} before starting the AI-powered triage.`}
             {phase === 'processing' && 'Claude Code is analyzing the captures and codebase to create a structured Epic.'}
-            {phase === 'question' && `Question ${currentQuestionIdx + 1} of ${simulatedQuestions.length}`}
-            {phase === 'complete' && 'The Epic and Beads have been created. Review the results below.'}
+            {phase === 'question' && 'The agent has a question about the triage scope.'}
+            {phase === 'complete' && 'The triage session has finished. Review the results below.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -227,25 +212,24 @@ export function TriageDialog({ captures, open, onOpenChange, onTriaged }: Triage
             {/* ── REVIEW PHASE ── */}
             {phase === 'review' && (
               <>
-                {/* Selected captures for review */}
                 <div>
                   <label className="mb-2 block text-xs font-medium text-ink-secondary">
                     Selected captures ({captures.length})
                   </label>
                   <div className="flex flex-col gap-2">
                     {captures.map((capture) => (
-                        <div
-                          key={capture.id}
-                          className="rounded-[var(--radius-lg)] border border-edge bg-surface-elevated p-3"
-                        >
-                          <div className="flex items-center gap-2 mb-1.5">
-                            <span className="text-xs font-medium text-ink-secondary">{capture.user?.name ?? 'Unknown'}</span>
-                            <span className="text-[11px] text-ink-disabled">
-                              {formatDistanceToNow(capture.createdAt * 1000, { addSuffix: true })}
-                            </span>
-                          </div>
-                          <p className="text-sm text-ink leading-relaxed">{capture.text}</p>
+                      <div
+                        key={capture.id}
+                        className="rounded-[var(--radius-lg)] border border-edge bg-surface-elevated p-3"
+                      >
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className="text-xs font-medium text-ink-secondary">{capture.user?.name ?? 'Unknown'}</span>
+                          <span className="text-[11px] text-ink-disabled">
+                            {formatDistanceToNow(capture.createdAt * 1000, { addSuffix: true })}
+                          </span>
                         </div>
+                        <p className="text-sm text-ink leading-relaxed">{capture.text}</p>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -260,7 +244,7 @@ export function TriageDialog({ captures, open, onOpenChange, onTriaged }: Triage
                     <div>
                       <p className="text-sm font-medium text-ink">AI-powered triage</p>
                       <p className="mt-1 text-xs text-ink-muted leading-relaxed">
-                        Claude Code will analyze these captures against the codebase, search for related patterns using CASS,
+                        Claude Code will analyze these captures against the codebase, search for related patterns,
                         and create a structured Epic with Beads. It may ask you a few questions to clarify scope.
                       </p>
                     </div>
@@ -268,8 +252,12 @@ export function TriageDialog({ captures, open, onOpenChange, onTriaged }: Triage
                 </div>
 
                 <div className="flex justify-end">
-                  <Button onClick={handleStartTriage} className="gap-2">
-                    <Zap className="h-3.5 w-3.5" />
+                  <Button onClick={handleStartTriage} className="gap-2" disabled={createSession.isPending}>
+                    {createSession.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Zap className="h-3.5 w-3.5" />
+                    )}
                     Start Triage
                   </Button>
                 </div>
@@ -278,29 +266,29 @@ export function TriageDialog({ captures, open, onOpenChange, onTriaged }: Triage
 
             {/* ── PROCESSING PHASE ── */}
             {phase === 'processing' && (
-              <div className="flex flex-col gap-2 py-4">
-                {processingSteps.map((step, i) => (
-                  <div key={step} className="flex items-center gap-3 px-2">
-                    {i < currentStep ? (
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
-                    ) : i === currentStep ? (
-                      <Loader2 className="h-4 w-4 shrink-0 animate-spin text-accent" />
-                    ) : (
-                      <div className="h-4 w-4 shrink-0 rounded-full border border-edge" />
-                    )}
-                    <span className={cn(
-                      'text-sm transition-colors',
-                      i < currentStep ? 'text-ink-muted' : i === currentStep ? 'text-ink' : 'text-ink-disabled',
-                    )}>
-                      {step}
-                    </span>
+              <div className="flex flex-col gap-3 py-4">
+                {assistantMessages.length > 0 ? (
+                  assistantMessages.slice(-5).map((msg, i) => (
+                    <div key={i} className="flex items-start gap-3 px-2">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-success mt-0.5" />
+                      <span className="text-sm text-ink-secondary line-clamp-2">{msg}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="flex items-center gap-3 px-2">
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin text-accent" />
+                    <span className="text-sm text-ink">Starting triage analysis...</span>
                   </div>
-                ))}
+                )}
+                <div className="flex items-center gap-3 px-2">
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-accent" />
+                  <span className="text-sm text-ink">Processing...</span>
+                </div>
               </div>
             )}
 
             {/* ── QUESTION PHASE ── */}
-            {phase === 'question' && (
+            {phase === 'question' && currentQuestion && (
               <>
                 <div className="rounded-[var(--radius-lg)] border border-accent/20 bg-accent-subtle p-4">
                   <div className="flex items-start gap-3">
@@ -308,40 +296,43 @@ export function TriageDialog({ captures, open, onOpenChange, onTriaged }: Triage
                       <Bot className="h-3.5 w-3.5 text-accent" />
                     </div>
                     <div className="flex-1">
-                      {simulatedQuestions[currentQuestionIdx].context && (
+                      {currentQuestion.context && (
                         <p className="mb-2 text-[11px] text-ink-muted font-mono">
-                          {simulatedQuestions[currentQuestionIdx].context}
+                          {currentQuestion.context}
                         </p>
                       )}
                       <p className="text-sm text-ink leading-relaxed">
-                        {simulatedQuestions[currentQuestionIdx].text}
+                        {currentQuestion.text}
                       </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-2">
-                  {simulatedQuestions[currentQuestionIdx].options.map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => setSelectedAnswer(option)}
-                      className={cn(
-                        'rounded-[var(--radius-md)] border px-4 py-3 text-left text-sm transition-all cursor-pointer',
-                        selectedAnswer === option
-                          ? 'border-accent bg-accent-muted text-ink'
-                          : 'border-edge bg-surface-base text-ink-secondary hover:bg-surface-elevated hover:border-edge-hover',
-                      )}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
+                {currentQuestion.options.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    {currentQuestion.options.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => setSelectedAnswer(option)}
+                        className={cn(
+                          'rounded-[var(--radius-md)] border px-4 py-3 text-left text-sm transition-all cursor-pointer',
+                          selectedAnswer === option
+                            ? 'border-accent bg-accent-muted text-ink'
+                            : 'border-edge bg-surface-base text-ink-secondary hover:bg-surface-elevated hover:border-edge-hover',
+                        )}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between">
                   <button
                     type="button"
                     onClick={handleSkipQuestion}
+                    disabled={answerMutation.isPending}
                     className="text-xs text-ink-muted hover:text-ink-secondary transition-colors cursor-pointer"
                   >
                     Skip — let agent decide
@@ -349,82 +340,38 @@ export function TriageDialog({ captures, open, onOpenChange, onTriaged }: Triage
                   <Button
                     size="sm"
                     onClick={handleAnswerQuestion}
-                    disabled={!selectedAnswer}
+                    disabled={!selectedAnswer || answerMutation.isPending}
                     className="gap-1.5"
                   >
-                    <ArrowRight className="h-3.5 w-3.5" />
+                    {answerMutation.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    )}
                     Continue
                   </Button>
                 </div>
-
-                {/* Previous answers */}
-                {Object.keys(answers).length > 0 && (
-                  <div className="mt-2">
-                    <Separator />
-                    <div className="mt-3 flex flex-col gap-2">
-                      <span className="text-[11px] text-ink-disabled">Previous answers</span>
-                      {Object.entries(answers).map(([qId, answer]) => {
-                        const q = simulatedQuestions.find((sq) => sq.id === qId)
-                        return (
-                          <div key={qId} className="rounded-[var(--radius-md)] bg-surface-elevated px-3 py-2">
-                            <p className="text-[11px] text-ink-muted line-clamp-1">{q?.text}</p>
-                            <p className="text-xs text-ink-secondary mt-0.5">{answer}</p>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
               </>
             )}
 
             {/* ── COMPLETE PHASE ── */}
-            {phase === 'complete' && result && (
+            {phase === 'complete' && (
               <>
-                {/* Epic summary */}
+                {/* Show assistant output as results */}
                 <div className="rounded-[var(--radius-xl)] border border-success/20 bg-success/5 p-5">
                   <div className="flex items-center gap-2 mb-3">
-                    <Badge variant="accent">{result.type}</Badge>
-                    <Badge variant={result.priority === 'P0' ? 'error' : result.priority === 'P1' ? 'info' : 'warning'}>
-                      {result.priority}
-                    </Badge>
-                    <span className="text-[11px] text-ink-muted">{result.estimatedEffort}</span>
+                    <Badge variant="accent">Triage Result</Badge>
+                    {session?.status === 'failed' && (
+                      <Badge variant="error">Session Failed</Badge>
+                    )}
                   </div>
-                  <h3 className="text-base font-semibold text-ink mb-1">{result.epicTitle}</h3>
-                  <p className="text-sm text-ink-secondary leading-relaxed">{result.epicDescription}</p>
-                  <div className="flex flex-wrap gap-1 mt-3">
-                    {result.labels.map((label) => (
-                      <Badge key={label} variant="outline" className="text-[10px]">{label}</Badge>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Beads breakdown */}
-                <div>
-                  <label className="mb-2 flex items-center gap-2 text-xs font-medium text-ink-secondary">
-                    Beads ({result.beads.length})
-                    <span className="text-[11px] text-ink-muted font-normal">— auto-generated sub-tasks</span>
-                  </label>
-                  <div className="flex flex-col gap-1.5">
-                    {result.beads.map((bead, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center gap-3 rounded-[var(--radius-md)] border border-edge bg-surface-raised px-3 py-2.5"
-                      >
-                        <div className="flex h-5 w-5 items-center justify-center rounded-full bg-surface-elevated text-[10px] font-medium text-ink-muted">
-                          {i + 1}
-                        </div>
-                        <span className="flex-1 text-sm text-ink">{bead.title}</span>
-                        <Badge variant="outline" className="text-[10px]">{bead.type}</Badge>
-                        <Badge
-                          variant={bead.priority === 'P1' ? 'info' : 'default'}
-                          className="text-[10px]"
-                        >
-                          {bead.priority}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
+                  {assistantMessages.length > 0 ? (
+                    <div className="text-sm text-ink leading-relaxed whitespace-pre-wrap">
+                      {assistantMessages.slice(-3).join('\n\n')}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-ink-muted">No output from triage session.</p>
+                  )}
                 </div>
 
                 <Separator />
@@ -452,4 +399,47 @@ export function TriageDialog({ captures, open, onOpenChange, onTriaged }: Triage
       </DialogContent>
     </Dialog>
   )
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function extractLatestQuestion(events: SessionEvent[]): ParsedQuestion | null {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i]
+    const data = typeof event.data === 'string' ? safeParseJSON(event.data) : event.data as Record<string, unknown>
+    if (!data) continue
+
+    // Check for questionData
+    const qd = data.questionData as Record<string, unknown> | undefined
+    if (qd?.text) {
+      return {
+        text: qd.text as string,
+        options: (qd.options as string[]) ?? [],
+        context: (qd.context as string) ?? undefined,
+      }
+    }
+
+    // Check for AskUserQuestion tool_use
+    if (event.eventType === 'tool_use' && data.toolName === 'AskUserQuestion') {
+      const inputStr = data.toolInput as string
+      const input = safeParseJSON(inputStr)
+      if (input?.question) {
+        return {
+          text: input.question as string,
+          options: (input.options as string[]) ?? [],
+          context: (input.context as string) ?? undefined,
+        }
+      }
+    }
+  }
+  return null
+}
+
+function safeParseJSON(str: unknown): Record<string, unknown> | null {
+  if (typeof str !== 'string') return str as Record<string, unknown> | null
+  try {
+    return JSON.parse(str)
+  } catch {
+    return null
+  }
 }
