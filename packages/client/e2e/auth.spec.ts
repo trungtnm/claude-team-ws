@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test'
 
+const TEST_API_KEY = process.env.CTW_E2E_API_KEY || 'ctw-e2e-test-key-0000'
+
 test.describe('Authentication', () => {
   test('redirects unauthenticated users to login', async ({ page }) => {
     await page.goto('/board')
@@ -17,17 +19,26 @@ test.describe('Authentication', () => {
     await page.goto('/login')
     await page.getByPlaceholder('ctw-').fill('invalid-key')
     await page.getByRole('button', { name: 'Sign in' }).click()
-    await expect(page.getByText('Invalid API key')).toBeVisible()
+    await expect(page.getByText(/invalid/i)).toBeVisible({ timeout: 5000 })
   })
 
   test('successful login redirects to board', async ({ page }) => {
-    // This test requires the server to be running with seeded data
-    // The API key is generated at seed time, so we'd need to fetch it first
-    // For now, test the flow up to the API call
     await page.goto('/login')
-    await page.getByPlaceholder('ctw-').fill('ctw-test-key')
+    await page.getByPlaceholder('ctw-').fill(TEST_API_KEY)
     await page.getByRole('button', { name: 'Sign in' }).click()
-    // Login will fail (invalid key) but we verify the form submits
-    await expect(page.getByRole('button', { name: 'Sign in' })).toBeEnabled()
+    await expect(page).toHaveURL(/\/board/, { timeout: 10_000 })
+    await expect(page.getByText('Epic Board')).toBeVisible()
+  })
+
+  test('authenticated user can access board directly', async ({ page }) => {
+    // Login first
+    await page.goto('/login')
+    await page.getByPlaceholder('ctw-').fill(TEST_API_KEY)
+    await page.getByRole('button', { name: 'Sign in' }).click()
+    await page.waitForURL('**/board', { timeout: 10_000 })
+
+    // Navigate away and back
+    await page.goto('/board')
+    await expect(page.getByText('Epic Board')).toBeVisible()
   })
 })

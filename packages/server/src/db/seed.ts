@@ -3,8 +3,11 @@ import { eq } from 'drizzle-orm'
 import { db, sqlite } from './index.js'
 import { users, projects, projectMembers } from './schema.js'
 
+// E2E test key: deterministic so Playwright tests can authenticate
+const E2E_TEST_KEY = process.env.CTW_E2E_API_KEY || 'ctw-e2e-test-key-0000'
+
 const DEFAULT_USERS = [
-  { id: 'usr_admin', name: 'Trung Tran', email: 'trung@team.local', role: 'techlead' as const, api_key: `ctw-${nanoid(16)}` },
+  { id: 'usr_admin', name: 'Trung Tran', email: 'trung@team.local', role: 'techlead' as const, api_key: E2E_TEST_KEY },
   { id: 'usr_pm', name: 'Minh Nguyen', email: 'minh@team.local', role: 'pm' as const, api_key: `ctw-${nanoid(16)}` },
   { id: 'usr_dev1', name: 'Hoa Le', email: 'hoa@team.local', role: 'dev' as const, api_key: `ctw-${nanoid(16)}` },
   { id: 'usr_dev2', name: 'Khoa Pham', email: 'khoa@team.local', role: 'dev' as const, api_key: `ctw-${nanoid(16)}` },
@@ -75,7 +78,7 @@ function ensureTables(): void {
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
       epic_id TEXT REFERENCES epics(id), user_id TEXT NOT NULL REFERENCES users(id),
-      claude_session_id TEXT, agent_mail_name TEXT, model TEXT NOT NULL DEFAULT 'sonnet',
+      name TEXT, claude_session_id TEXT, agent_mail_name TEXT, model TEXT NOT NULL DEFAULT 'sonnet',
       status TEXT NOT NULL DEFAULT 'queued', prompt TEXT NOT NULL,
       pid INTEGER, exit_code INTEGER, pr_url TEXT, pr_status TEXT,
       started_at INTEGER, finished_at INTEGER,
