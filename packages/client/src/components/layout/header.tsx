@@ -6,17 +6,15 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { NotificationDropdown } from '@/components/layout/notification-dropdown'
 import { CaptureComposer } from '@/components/capture/capture-composer'
+import { useProject } from '@/providers/project-provider'
+import { useAuth } from '@/providers/auth-provider'
 import { useCaptureStore } from '@/stores/capture-store'
 import { cn } from '@/lib/utils'
-
-const mockProjects = [
-  { id: 'proj-1', name: 'claude-team-ws' },
-  { id: 'proj-2', name: 'acme-dashboard' },
-]
 
 const navItems = [
   { to: '/board', label: 'Board', icon: LayoutDashboard },
@@ -27,7 +25,18 @@ const navItems = [
 ]
 
 export function Header() {
+  const { project, projects, setProjectId } = useProject()
+  const { user, logout } = useAuth()
   const { toggleComposer } = useCaptureStore()
+
+  const initials = user?.name
+    ? user.name
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase()
+    : '??'
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -50,13 +59,19 @@ export function Header() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="gap-1 text-sm font-semibold text-ink px-1.5">
-              claude-team-ws
+              {project?.name ?? 'Select project'}
               <ChevronDown className="h-3 w-3 text-ink-muted" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            {mockProjects.map((project) => (
-              <DropdownMenuItem key={project.id}>{project.name}</DropdownMenuItem>
+            {projects.map((p) => (
+              <DropdownMenuItem
+                key={p.id}
+                onClick={() => setProjectId(p.id)}
+                className={cn(p.id === project?.id && 'font-semibold')}
+              >
+                {p.name}
+              </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
@@ -100,9 +115,27 @@ export function Header() {
         </Button>
 
         <NotificationDropdown />
-        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-[10px] font-semibold text-surface-base">
-          TT
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label="User menu"
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-[10px] font-semibold text-surface-base cursor-pointer hover:opacity-90 transition-opacity"
+            >
+              {initials}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <div className="px-2 py-1.5">
+              <p className="text-sm font-medium text-ink">{user?.name}</p>
+              <p className="text-xs text-ink-muted">{user?.email}</p>
+            </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={logout} className="text-error focus:text-error">
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       <CaptureComposer />
