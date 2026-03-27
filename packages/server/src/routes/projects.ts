@@ -5,8 +5,23 @@ import { z } from 'zod'
 import { db } from '../db/index.js'
 import { projects, projectMembers } from '../db/schema.js'
 import { authenticate, requireRole } from '../middleware/auth.js'
+import multer from 'multer'
 import { emitToProject } from '../services/socket-manager.js'
+import { uploadToR2, deleteFromR2 } from '../services/r2-service.js'
 import { logError } from '../utils/log-error.js'
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['image/png', 'image/jpeg', 'image/webp']
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true)
+    } else {
+      cb(new Error('Only PNG, JPEG, and WebP images are allowed'))
+    }
+  },
+})
 
 const router: RouterType = Router()
 
@@ -31,6 +46,7 @@ router.get('/', (req, res) => {
         project_root: projects.project_root,
         max_concurrent_agents: projects.max_concurrent_agents,
         ask_question_mode: projects.ask_question_mode,
+        picture_url: projects.picture_url,
         created_at: projects.created_at,
         updated_at: projects.updated_at,
       })
@@ -179,6 +195,72 @@ router.patch('/:projectId', requireRole('pm', 'techlead'), (req, res) => {
     res.json({ project: updated })
   } catch (err) {
       res.status(500).json({ error: logError('projects', err) })
+  }
+})
+
+// POST /:projectId/picture — upload project picture (PM/TechLead)
+router.post('/:projectId/picture', requireRole('pm', 'techlead'), upload.single('picture'), async (req, res) => {
+  try {
+    const projectId = param(req, 'projectId')
+    const project = db.select().from(projects).where(eq(projects.id, projectId)).get()
+    if (!project) {
+      res.status(404).json({ error: 'Project not found' })
+      return
+    }
+
+    const file = req.file
+    if (!file) {
+      res.status(400).json({ error: 'No file uploaded' })
+      return
+    }
+
+    const ext = file.mimetype.split('/')[1] === 'jpeg' ? 'jpg' : file.mimetype.split('/')[1]
+    const key = `projects/${projectId}/picture.${ext}`
+
+    const pictureUrl = await uploadToR2(key, file.buffer, file.mimetype)
+
+    const now = Math.floor(Date.now() / 1000)
+    db.update(projects)
+      .set({ picture_url: pictureUrl, updated_at: now })
+      .where(eq(projects.id, projectId))
+      .run()
+
+    const updated = db.select().from(projects).where(eq(projects.id, projectId)).get()
+    emitToProject(projectId, 'project:updated', updated)
+    res.json({ project: updated })
+  } catch (err) {
+    res.status(500).json({ error: logError('projects', err) })
+  }
+})
+
+// DELETE /:projectId/picture — remove project picture (PM/TechLead)
+router.delete('/:projectId/picture', requireRole('pm', 'techlead'), async (req, res) => {
+  try {
+    const projectId = param(req, 'projectId')
+    const project = db.select().from(projects).where(eq(projects.id, projectId)).get()
+    if (!project) {
+      res.status(404).json({ error: 'Project not found' })
+      return
+    }
+
+    if (project.picture_url) {
+      // Extract key from URL
+      const url = new URL(project.picture_url)
+      const key = url.pathname.replace(/^\//, '')
+      await deleteFromR2(key).catch(() => {}) // Best-effort delete
+    }
+
+    const now = Math.floor(Date.now() / 1000)
+    db.update(projects)
+      .set({ picture_url: null, updated_at: now })
+      .where(eq(projects.id, projectId))
+      .run()
+
+    const updated = db.select().from(projects).where(eq(projects.id, projectId)).get()
+    emitToProject(projectId, 'project:updated', updated)
+    res.json({ project: updated })
+  } catch (err) {
+    res.status(500).json({ error: logError('projects', err) })
   }
 })
 

@@ -36,6 +36,24 @@ export const projectsApi = {
     api.post<{ project: Project }>('/projects', data),
   update: (projectId: string, data: Partial<Pick<Project, 'name' | 'maxConcurrentAgents' | 'askQuestionMode'>>) =>
     api.patch<{ project: Project }>(`/projects/${projectId}`, data),
+  uploadPicture: async (projectId: string, file: File): Promise<{ project: Project }> => {
+    const formData = new FormData()
+    formData.append('picture', file)
+    const token = localStorage.getItem('auth_token')
+    const res = await fetch(`/api/projects/${projectId}/picture`, {
+      method: 'POST',
+      body: formData,
+      credentials: 'include',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Upload failed' }))
+      throw new Error(err.error ?? 'Upload failed')
+    }
+    return res.json()
+  },
+  removePicture: (projectId: string) =>
+    api.delete<{ project: Project }>(`/projects/${projectId}/picture`),
 }
 
 // Repos

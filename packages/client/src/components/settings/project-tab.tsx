@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Camera, Save, Copy, Check, Download, RefreshCw, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -7,9 +7,11 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 import { useProjectSettings, useUpdateProject } from '@/hooks/use-settings'
+import { queryKeys } from '@/lib/query-keys'
 import { useProject } from '@/providers/project-provider'
-import { healthApi } from '@/lib/resources'
+import { healthApi, projectsApi } from '@/lib/resources'
 import type { AskQuestionMode } from '@/types'
 
 const askQuestionModes = [
@@ -54,6 +56,9 @@ export function ProjectTab() {
   const [integrationStatuses, setIntegrationStatuses] = useState(defaultIntegrations)
   const [integrationsLoading, setIntegrationsLoading] = useState(false)
   const [formInitialized, setFormInitialized] = useState(false)
+  const [uploadingPicture, setUploadingPicture] = useState(false)
+  const [removingPicture, setRemovingPicture] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Sync form state only on first load (not on every refetch)
   useEffect(() => {
@@ -65,6 +70,34 @@ export function ProjectTab() {
       setFormInitialized(true)
     }
   }, [project, formInitialized])
+
+  const queryClient = useQueryClient()
+
+  const handleUploadPicture = async (file: File) => {
+    setUploadingPicture(true)
+    try {
+      await projectsApi.uploadPicture(projectId, file)
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects.all })
+      toast.success('Project picture updated')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setUploadingPicture(false)
+    }
+  }
+
+  const handleRemovePicture = async () => {
+    setRemovingPicture(true)
+    try {
+      await projectsApi.removePicture(projectId)
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects.all })
+      toast.success('Project picture removed')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Remove failed')
+    } finally {
+      setRemovingPicture(false)
+    }
+  }
 
   const handleSave = () => {
     updateProject.mutate(
@@ -146,29 +179,50 @@ export function ProjectTab() {
         {/* Avatar / picture */}
         <div className="flex items-center gap-5">
           <div className="relative group">
-            <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-accent text-2xl font-bold text-surface-base">
-              {name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'CT'}
-            </div>
+            {project?.pictureUrl ? (
+              <img
+                src={project.pictureUrl}
+                alt={name}
+                className="h-20 w-20 rounded-2xl object-cover"
+              />
+            ) : (
+              <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-accent text-2xl font-bold text-surface-base">
+                {name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'CT'}
+              </div>
+            )}
             <button
               type="button"
-              onClick={() => toast.info('Upload project picture')}
+              onClick={() => fileInputRef.current?.click()}
               className={cn(
                 'absolute inset-0 flex items-center justify-center rounded-2xl bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer',
               )}
             >
-              <Camera className="h-5 w-5 text-white" />
+              {uploadingPicture ? <Loader2 className="h-5 w-5 text-white animate-spin" /> : <Camera className="h-5 w-5 text-white" />}
             </button>
           </div>
           <div className="space-y-1">
             <p className="text-sm text-ink">Project picture</p>
             <p className="text-xs text-ink-muted">Displayed in the header and project selector. Recommended 256x256px.</p>
             <div className="flex items-center gap-2 mt-1">
-              <Button variant="outline" size="sm" className="text-xs" onClick={() => toast.info('Upload project picture')}>
-                Upload
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) handleUploadPicture(file)
+                  e.target.value = ''
+                }}
+              />
+              <Button variant="outline" size="sm" className="text-xs" onClick={() => fileInputRef.current?.click()} disabled={uploadingPicture}>
+                {uploadingPicture ? 'Uploading...' : 'Upload'}
               </Button>
-              <Button variant="ghost" size="sm" className="text-xs text-ink-muted" onClick={() => toast('Picture removed')}>
-                Remove
-              </Button>
+              {project?.pictureUrl && (
+                <Button variant="ghost" size="sm" className="text-xs text-ink-muted" onClick={handleRemovePicture} disabled={removingPicture}>
+                  {removingPicture ? 'Removing...' : 'Remove'}
+                </Button>
+              )}
             </div>
           </div>
         </div>

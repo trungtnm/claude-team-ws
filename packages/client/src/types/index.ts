@@ -52,6 +52,7 @@ export interface Project {
   projectRoot: string
   maxConcurrentAgents: number
   askQuestionMode: AskQuestionMode
+  pictureUrl: string | null
   createdAt: number
   updatedAt: number
 }

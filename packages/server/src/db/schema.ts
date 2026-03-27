@@ -26,6 +26,7 @@ export const projects = sqliteTable('projects', {
   project_root: text('project_root').notNull().unique(),
   max_concurrent_agents: integer('max_concurrent_agents').notNull().default(3),
   ask_question_mode: text('ask_question_mode', { enum: ['pause', 'auto', 'hybrid'] }).notNull().default('hybrid'),
+  picture_url: text('picture_url'),
   created_at: integer('created_at').notNull().default(sql`(unixepoch())`),
   updated_at: integer('updated_at').notNull().default(sql`(unixepoch())`),
 })

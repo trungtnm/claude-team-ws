@@ -21,7 +21,7 @@ export function createTestDb(): { db: BetterSQLite3Database<typeof schema>; sqli
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE,
       project_root TEXT NOT NULL UNIQUE, max_concurrent_agents INTEGER NOT NULL DEFAULT 3,
-      ask_question_mode TEXT NOT NULL DEFAULT 'hybrid',
+      ask_question_mode TEXT NOT NULL DEFAULT 'hybrid', picture_url TEXT,
       created_at INTEGER NOT NULL DEFAULT (unixepoch()), updated_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
     CREATE TABLE IF NOT EXISTS repos (
