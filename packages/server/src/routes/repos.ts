@@ -38,9 +38,9 @@ router.get('/', (req, res) => {
 const addRepoSchema = z.object({
   name: z.string().min(1).max(200),
   git_url: z.string().url().optional(),
-  path: z.string().min(1),
+  source_path: z.string().min(1).optional(),
   default_branch: z.string().min(1).optional(),
-  link_mode: z.enum(['clone', 'symlink']).optional(),
+  mode: z.enum(['clone', 'link']).optional(),
 })
 
 // POST / — add repo (PM/TechLead)
@@ -54,7 +54,7 @@ router.post('/', requireRole('pm', 'techlead'), async (req, res) => {
 
     const projectId = param(req, 'projectId')
     const user = req.user!
-    const { name, git_url, path, default_branch, link_mode } = parsed.data
+    const { name, git_url, source_path, default_branch, mode: requestMode } = parsed.data
 
     // Check uniqueness within project
     const existing = db
@@ -70,17 +70,18 @@ router.post('/', requireRole('pm', 'techlead'), async (req, res) => {
 
     const now = Math.floor(Date.now() / 1000)
     const id = `repo_${nanoid(12)}`
-    const mode = link_mode ?? 'clone'
-    const status = mode === 'clone' && git_url ? 'cloning' : 'ready'
+    const linkMode = requestMode === 'link' ? 'symlink' : 'clone'
+    const repoPath = source_path ?? name
+    const status = linkMode === 'clone' && git_url ? 'cloning' : 'ready'
 
     db.insert(repos).values({
       id,
       project_id: projectId,
       name,
       git_url: git_url ?? null,
-      path,
+      path: repoPath,
       default_branch: default_branch ?? 'main',
-      link_mode: mode,
+      link_mode: linkMode,
       status,
       added_by: user.id,
       created_at: now,
