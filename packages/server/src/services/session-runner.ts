@@ -1,7 +1,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { eq, and } from 'drizzle-orm'
 import { db } from '../db/index.js'
-import { sessions, sessionEvents, projects } from '../db/schema.js'
+import { sessions, sessionEvents, projects, activityLog } from '../db/schema.js'
 import { emitToProject, emitToSession, getIO } from './socket-manager.js'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -205,6 +205,13 @@ class SessionRunner {
             session: { ...current, status: 'completed', finished_at: now },
             action: 'completed',
           })
+
+          db.insert(activityLog).values({
+            project_id: managed.projectId,
+            user_id: current.user_id,
+            action: 'session_completed',
+            details: JSON.stringify({ session_id: sessionId, name: current.name }),
+          }).run()
         }
       }
     } catch (err: unknown) {
@@ -227,6 +234,13 @@ class SessionRunner {
           session: { ...current, status: 'failed', finished_at: now },
           action: 'failed',
         })
+
+        db.insert(activityLog).values({
+          project_id: managed.projectId,
+          user_id: current.user_id,
+          action: 'session_failed',
+          details: JSON.stringify({ session_id: sessionId, error: errStr.slice(0, 500) }),
+        }).run()
       }
     } finally {
       this.managed.delete(sessionId)

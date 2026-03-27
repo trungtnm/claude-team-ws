@@ -214,6 +214,7 @@ export const activityLog = sqliteTable('activity_log', {
       'epic_created',
       'session_started',
       'session_completed',
+      'session_failed',
       'pr_created',
       'pr_merged',
       'rule_created',
