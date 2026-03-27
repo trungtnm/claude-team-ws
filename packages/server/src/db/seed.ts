@@ -6,12 +6,16 @@ import { users, projects, projectMembers } from './schema.js'
 // Admin key: random per seed unless CTW_E2E_API_KEY is explicitly set for E2E tests
 const adminApiKey = process.env.CTW_E2E_API_KEY || `ctw-${nanoid(16)}`
 
+// Bot API key: stable via env var or random per seed
+const botApiKey = process.env.CTW_BOT_API_KEY || `ctw-bot-${nanoid(16)}`
+
 const DEFAULT_USERS = [
   { id: 'usr_admin', name: 'Trung Tran', email: 'trung@team.local', role: 'techlead' as const, api_key: adminApiKey },
   { id: 'usr_pm', name: 'Minh Nguyen', email: 'minh@team.local', role: 'pm' as const, api_key: `ctw-${nanoid(16)}` },
   { id: 'usr_dev1', name: 'Hoa Le', email: 'hoa@team.local', role: 'dev' as const, api_key: `ctw-${nanoid(16)}` },
   { id: 'usr_dev2', name: 'Khoa Pham', email: 'khoa@team.local', role: 'dev' as const, api_key: `ctw-${nanoid(16)}` },
   { id: 'usr_viewer', name: 'Lan Vo', email: 'lan@team.local', role: 'viewer' as const, api_key: `ctw-${nanoid(16)}` },
+  { id: 'usr_bot', name: 'Agent Bot', email: 'bot@system.local', role: 'dev' as const, api_key: botApiKey },
 ]
 
 const DEFAULT_PROJECT = {
