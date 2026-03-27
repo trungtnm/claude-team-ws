@@ -33,6 +33,22 @@ class SessionRunner {
   }
 
   start(): void {
+    // Recover orphaned sessions from previous crash
+    const now = Math.floor(Date.now() / 1000)
+    const orphanedRunning = db
+      .update(sessions)
+      .set({ status: 'failed', finished_at: now })
+      .where(eq(sessions.status, 'running'))
+      .run()
+    const orphanedWaiting = db
+      .update(sessions)
+      .set({ status: 'failed', finished_at: now })
+      .where(eq(sessions.status, 'waiting_input'))
+      .run()
+    if (orphanedRunning.changes || orphanedWaiting.changes) {
+      console.log(`[SessionRunner] recovered ${orphanedRunning.changes + orphanedWaiting.changes} orphaned sessions`)
+    }
+
     // Poll for queued sessions every 3 seconds
     this.pollInterval = setInterval(() => {
       this.processQueue()
@@ -104,6 +120,9 @@ class SessionRunner {
   // ─── Session Execution ────────────────────────────────────────────────
 
   private startSession(session: typeof sessions.$inferSelect): void {
+    // Prevent double-start if already managed
+    if (this.managed.has(session.id)) return
+
     const abortController = new AbortController()
     const managed: ManagedSession = {
       sessionId: session.id,
@@ -356,9 +375,11 @@ class SessionRunner {
       action: 'waiting_input',
     })
 
-    // Wait for user answer
-    const userAnswer = await new Promise<string>((resolve) => {
+    // Wait for user answer OR abort
+    const userAnswer = await new Promise<string>((resolve, reject) => {
       managed.pendingAnswer = resolve
+      const onAbort = () => reject(new DOMException('Session cancelled', 'AbortError'))
+      managed.abortController.signal.addEventListener('abort', onAbort, { once: true })
     })
     managed.pendingAnswer = null
 

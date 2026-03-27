@@ -13,7 +13,7 @@ import { SessionStatsBar } from '@/components/agents/session-stats-bar'
 import { SessionInput } from '@/components/agents/session-input'
 import { PermissionModeBar } from '@/components/agents/permission-mode-bar'
 import { NewSessionDialog } from '@/components/agents/new-session-dialog'
-import { useSessionsQuery, useCancelSessionMutation, useCompleteSessionMutation, useSessionRoom, isActiveSession } from '@/hooks/use-sessions'
+import { useSessionsQuery, useCancelSessionMutation, useSessionRoom, isActiveSession } from '@/hooks/use-sessions'
 import { cn } from '@/lib/utils'
 import type { AgentSession } from '@/types'
 
@@ -58,7 +58,6 @@ export default function AgentsPage() {
 
   const { data: allSessions = [], isLoading, error } = useSessionsQuery()
   const cancelMutation = useCancelSessionMutation()
-  const completeMutation = useCompleteSessionMutation()
 
   // Join Socket.IO room for the selected session to get real-time events
   useSessionRoom(selectedSessionId ?? undefined)
@@ -256,10 +255,10 @@ export default function AgentsPage() {
                         variant="outline"
                         size="sm"
                         className="text-xs"
-                        disabled={completeMutation.isPending}
-                        onClick={() => completeMutation.mutate(selectedSession.id)}
+                        disabled={cancelMutation.isPending}
+                        onClick={() => cancelMutation.mutate(selectedSession.id)}
                       >
-                        Complete
+                        Cancel
                       </Button>
                     )}
                     {(selectedSession.status === 'running' || selectedSession.status === 'waiting_input') && (
@@ -279,7 +278,7 @@ export default function AgentsPage() {
                 {/* Permission mode bar */}
                 {isActiveSession(selectedSession) && (
                   <div className="mt-2">
-                    <PermissionModeBar sessionId={selectedSession.id} currentMode="default" />
+                    <PermissionModeBar sessionId={selectedSession.id} currentMode="bypassPermissions" />
                   </div>
                 )}
               </div>

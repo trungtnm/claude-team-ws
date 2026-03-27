@@ -144,10 +144,12 @@ Output a summary of the Epic and Beads you would create.`
   }, [sessionId, answerMutation])
 
   const handleClose = useCallback(() => {
-    onTriaged(captures.map((c) => c.id))
+    if (session?.status === 'completed') {
+      onTriaged(captures.map((c) => c.id))
+      toast.success('Triage complete')
+    }
     onOpenChange(false)
-    toast.success('Triage complete')
-  }, [captures, onTriaged, onOpenChange])
+  }, [session?.status, captures, onTriaged, onOpenChange])
 
   const handleViewOnBoard = useCallback(() => {
     onTriaged(captures.map((c) => c.id))

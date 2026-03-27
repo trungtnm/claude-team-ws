@@ -1,5 +1,5 @@
 import { Router, type Router as RouterType, type Request } from 'express'
-import { eq, and, desc } from 'drizzle-orm'
+import { eq, and, desc, gt } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
 import { db } from '../db/index.js'
@@ -407,11 +407,14 @@ router.get('/:sessionId/events', (req, res) => {
     const rows = db
       .select()
       .from(sessionEvents)
-      .where(eq(sessionEvents.session_id, sessionId))
+      .where(
+        afterId > 0
+          ? and(eq(sessionEvents.session_id, sessionId), gt(sessionEvents.id, afterId))
+          : eq(sessionEvents.session_id, sessionId),
+      )
       .orderBy(sessionEvents.id)
       .limit(limit)
       .all()
-      .filter(row => row.id > afterId)
 
     // Parse event data
     const events = rows.map(row => ({

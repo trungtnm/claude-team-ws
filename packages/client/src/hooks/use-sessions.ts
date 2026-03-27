@@ -159,11 +159,15 @@ export function useSendMessageMutation() {
 }
 
 export function useSetPermissionModeMutation() {
+  const queryClient = useQueryClient()
   const { projectId } = useProject()
 
   return useMutation({
     mutationFn: ({ sessionId, mode }: { sessionId: string; mode: string }) =>
       sessionsApi.setPermissionMode(projectId, sessionId, { mode }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.detail(variables.sessionId) })
+    },
     onError: (err) => {
       toast.error(`Failed to set permission mode: ${err instanceof Error ? err.message : 'Unknown error'}`)
     },
