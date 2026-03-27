@@ -107,7 +107,7 @@ app.use('/api/projects/:projectId/webhooks', authenticate, requireProjectMember,
 app.use('/api/projects/:projectId/reviews', authenticate, requireProjectMember, reviewsRouter)
 app.use('/api/projects/:projectId/mail', authenticate, requireProjectMember, mailRouter)
 app.use('/api/projects/:projectId/beads-sync', authenticate, requireProjectMember, createBeadsSyncRouter({ beadsService, projectRoot: PROJECT_ROOT }))
-app.use('/api/projects/:projectId/activity', createActivityRouter({ db }))
+app.use('/api/projects/:projectId/activity', authenticate, requireProjectMember, createActivityRouter({ db }))
 
 // User-scoped routes (no project context)
 app.use('/api/notifications', authenticate, notificationsRouter)

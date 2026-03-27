@@ -3,8 +3,6 @@ import { eq, and, desc, count, sql, gt } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import type * as schemaTypes from '../db/schema.js'
 import { activityLog, users, sessions, captures, epics } from '../db/schema.js'
-import { authenticate } from '../middleware/auth.js'
-import { requireProjectMember } from '../middleware/project-access.js'
 import { logError } from '../utils/log-error.js'
 
 interface ActivityRouterDeps {
@@ -20,9 +18,6 @@ function param(req: Request, name: string): string {
 export function createActivityRouter({ db }: ActivityRouterDeps): RouterType {
   // Mounted at /api/projects/:projectId/activity
   const router: RouterType = Router({ mergeParams: true })
-
-  router.use(authenticate)
-  router.use(requireProjectMember)
 
   // GET / — paginated activity log entries joined with user name
   router.get('/', (req, res) => {

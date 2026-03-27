@@ -318,6 +318,11 @@ function WebhookCard({ webhook }: { webhook: WebhookConfig }) {
       ? webhook.events.filter((e) => e !== eventValue)
       : [...webhook.events, eventValue]
 
+    if (updated.length === 0) {
+      toast.error('At least one event must be selected')
+      return
+    }
+
     updateWebhook.mutate(
       { webhookId: webhook.id, data: { events: updated } },
       { onSuccess: () => toast.success(`Event ${eventValue} ${updated.includes(eventValue) ? 'enabled' : 'disabled'}`) },

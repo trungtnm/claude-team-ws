@@ -214,16 +214,14 @@ router.post('/:projectId/picture', requireRole('pm', 'techlead'), upload.single(
       return
     }
 
-    // Delete old picture from R2 if replacing
-    if (project.picture_url) {
-      try {
-        const oldUrl = new URL(project.picture_url)
-        const oldKey = oldUrl.pathname.replace(/^\//, '')
-        await deleteFromR2(oldKey)
-      } catch { /* best-effort cleanup */ }
-    }
-
     const ext = file.mimetype.split('/')[1] === 'jpeg' ? 'jpg' : file.mimetype.split('/')[1]
+
+    // Delete old picture from R2 if replacing (try all common extensions)
+    if (project.picture_url) {
+      for (const oldExt of ['png', 'jpg', 'webp']) {
+        await deleteFromR2(`projects/${projectId}/picture.${oldExt}`).catch(() => {})
+      }
+    }
     const key = `projects/${projectId}/picture.${ext}`
 
     const pictureUrl = await uploadToR2(key, file.buffer, file.mimetype)
@@ -253,10 +251,9 @@ router.delete('/:projectId/picture', requireRole('pm', 'techlead'), async (req, 
     }
 
     if (project.picture_url) {
-      // Extract key from URL
-      const url = new URL(project.picture_url)
-      const key = url.pathname.replace(/^\//, '')
-      await deleteFromR2(key).catch(() => {}) // Best-effort delete
+      for (const oldExt of ['png', 'jpg', 'webp']) {
+        await deleteFromR2(`projects/${projectId}/picture.${oldExt}`).catch(() => {})
+      }
     }
 
     const now = Math.floor(Date.now() / 1000)

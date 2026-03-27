@@ -162,7 +162,7 @@ function MetricsPanel({ metrics, isLoading }: { metrics: ProjectMetrics | undefi
         <MetricCard
           label="Success Rate"
           value={`${metrics.sessions.successRate}%`}
-          sub={`${metrics.sessions.completed}/${metrics.sessions.total} sessions`}
+          sub={`${metrics.sessions.completed}/${metrics.sessions.completed + metrics.sessions.failed} finished`}
           color="text-success"
         />
         <MetricCard
