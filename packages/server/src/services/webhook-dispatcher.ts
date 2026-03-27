@@ -69,10 +69,16 @@ function formatTelegramPayload(data: WebhookEventData, url: string): Record<stri
   const title = formatTitle(data)
   const text = formatDescription(data)
 
-  // Extract chat_id from URL: https://api.telegram.org/bot{token}/sendMessage
-  // The chat_id is passed in the body
+  // Telegram URLs carry the bot token: https://api.telegram.org/bot{token}/sendMessage
+  // The chat_id must be extracted from the URL query string or configured separately.
+  // Convention: store as ?chat_id=12345 on the webhook URL
+  const chatId = extractTelegramChatId(url)
+  if (!chatId) {
+    throw new Error('Telegram webhook URL must include ?chat_id=<id> parameter')
+  }
+
   return {
-    chat_id: extractTelegramChatId(url),
+    chat_id: chatId,
     text: `*${title}*\n\n${text}`,
     parse_mode: 'Markdown',
   }
@@ -104,11 +110,12 @@ function formatDescription(data: WebhookEventData): string {
 }
 
 function extractTelegramChatId(url: string): string {
-  // Telegram URLs don't carry chat_id — it needs to be stored separately.
-  // For now, we use a placeholder. In production this would be in the webhook config.
-  // The URL format is: https://api.telegram.org/bot{token}/sendMessage
-  // chat_id must be provided in the request body.
-  return ''
+  try {
+    const parsed = new URL(url)
+    return parsed.searchParams.get('chat_id') ?? ''
+  } catch {
+    return ''
+  }
 }
 
 // ─── Dispatch ───────────────────────────────────────────────────────────────
@@ -124,22 +131,15 @@ export function formatPayload(type: WebhookType, data: WebhookEventData, url: st
   }
 }
 
-function getDispatchUrl(type: WebhookType, url: string): string {
-  // For Telegram, the URL already includes /sendMessage
-  // For Slack and Discord, the URL is the webhook endpoint directly
-  return url
-}
-
 export async function dispatch(
   type: WebhookType,
   url: string,
   data: WebhookEventData,
 ): Promise<DispatchResult> {
   const payload = formatPayload(type, data, url)
-  const dispatchUrl = getDispatchUrl(type, url)
 
   try {
-    const response = await fetch(dispatchUrl, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

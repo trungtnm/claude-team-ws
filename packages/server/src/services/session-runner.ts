@@ -505,7 +505,14 @@ class SessionRunner {
     }
 
     return {
-      ...process.env,
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      USER: process.env.USER,
+      SHELL: process.env.SHELL,
+      LANG: process.env.LANG,
+      TERM: process.env.TERM,
+      NODE_ENV: process.env.NODE_ENV,
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
       CTW_API_KEY: apiKey,
       CTW_SERVER_URL: `http://localhost:${process.env.PORT || 3000}`,
       CTW_PROJECT_ID: projectId,

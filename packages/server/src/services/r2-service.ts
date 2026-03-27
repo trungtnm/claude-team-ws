@@ -10,8 +10,11 @@ function isConfigured(): boolean {
   return !!(ACCOUNT_ID && ACCESS_KEY_ID && SECRET_ACCESS_KEY && BUCKET_NAME)
 }
 
+let _client: S3Client | null = null
+
 function getClient(): S3Client {
-  return new S3Client({
+  if (_client) return _client
+  _client = new S3Client({
     region: 'auto',
     endpoint: `https://${ACCOUNT_ID}.r2.cloudflarestorage.com`,
     credentials: {
@@ -19,6 +22,7 @@ function getClient(): S3Client {
       secretAccessKey: SECRET_ACCESS_KEY,
     },
   })
+  return _client
 }
 
 export async function uploadToR2(

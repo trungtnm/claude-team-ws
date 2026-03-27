@@ -306,14 +306,6 @@ router.post('/:sessionId/complete', (req, res) => {
 
     const updated = db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
     emitToProject(projectId, 'session:lifecycle', { session: updated, action: 'completed' })
-
-    db.insert(activityLog).values({
-      project_id: projectId,
-      user_id: session.user_id,
-      action: 'session_completed',
-      details: JSON.stringify({ session_id: sessionId, name: session.name }),
-    }).run()
-
     res.json({ session: updated })
   } catch (err) {
     res.status(500).json({ error: logError('sessions', err) })

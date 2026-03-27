@@ -214,6 +214,15 @@ router.post('/:projectId/picture', requireRole('pm', 'techlead'), upload.single(
       return
     }
 
+    // Delete old picture from R2 if replacing
+    if (project.picture_url) {
+      try {
+        const oldUrl = new URL(project.picture_url)
+        const oldKey = oldUrl.pathname.replace(/^\//, '')
+        await deleteFromR2(oldKey)
+      } catch { /* best-effort cleanup */ }
+    }
+
     const ext = file.mimetype.split('/')[1] === 'jpeg' ? 'jpg' : file.mimetype.split('/')[1]
     const key = `projects/${projectId}/picture.${ext}`
 

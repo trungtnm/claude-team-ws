@@ -1,4 +1,5 @@
 import { api } from './api'
+import { toCamelCase } from './case-convert'
 import type {
   User,
   Project,
@@ -50,7 +51,8 @@ export const projectsApi = {
       const err = await res.json().catch(() => ({ error: 'Upload failed' }))
       throw new Error(err.error ?? 'Upload failed')
     }
-    return res.json()
+    const json = await res.json()
+    return toCamelCase(json)
   },
   removePicture: (projectId: string) =>
     api.delete<{ project: Project }>(`/projects/${projectId}/picture`),
