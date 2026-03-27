@@ -1,7 +1,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { eq, and } from 'drizzle-orm'
 import { db } from '../db/index.js'
-import { sessions, sessionEvents, projects, activityLog } from '../db/schema.js'
+import { sessions, sessionEvents, projects, activityLog, users } from '../db/schema.js'
 import { emitToProject, emitToSession, getIO } from './socket-manager.js'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -150,8 +150,11 @@ class SessionRunner {
     // Push initial system event
     this.pushEvent(managed, 'system', { content: 'Session started' })
 
+    // Fetch user's API key for session env
+    const sessionEnv = this.buildSessionEnv(session.user_id, session.project_id)
+
     // Run agent asynchronously
-    this.runAgent(managed, session.prompt, session.model, false).catch((err) => {
+    this.runAgent(managed, session.prompt, session.model, false, sessionEnv).catch((err) => {
       console.error(`[SessionRunner] unexpected error for session ${session.id}:`, err)
     })
   }
@@ -161,6 +164,7 @@ class SessionRunner {
     prompt: string,
     model: string,
     isResume: boolean,
+    sessionEnv?: Record<string, string | undefined>,
   ): Promise<void> {
     const { sessionId, abortController } = managed
 
@@ -173,6 +177,7 @@ class SessionRunner {
       abortController,
       systemPrompt: 'claude_code',
       canUseTool: this.makeCanUseTool(managed),
+      ...(sessionEnv && { env: sessionEnv }),
     }
 
     if (isResume && managed.claudeSessionId) {
@@ -483,6 +488,28 @@ class SessionRunner {
     // Resolve the pending promise
     managed.pendingAnswer(answer)
     return true
+  }
+
+  // ─── Session Environment ────────────────────────────────────────
+
+  private buildSessionEnv(userId: string, projectId: string): Record<string, string | undefined> {
+    let apiKey: string | undefined
+
+    if (userId === 'usr_bot') {
+      // Background/system sessions use the bot API key
+      apiKey = process.env.CTW_BOT_API_KEY
+    } else {
+      // User-triggered sessions use the starting user's API key
+      const user = db.select({ api_key: users.api_key }).from(users).where(eq(users.id, userId)).get()
+      apiKey = user?.api_key ?? undefined
+    }
+
+    return {
+      ...process.env,
+      CTW_API_KEY: apiKey,
+      CTW_SERVER_URL: `http://localhost:${process.env.PORT || 3000}`,
+      CTW_PROJECT_ID: projectId,
+    }
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────
