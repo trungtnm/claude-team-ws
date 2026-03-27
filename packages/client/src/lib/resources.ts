@@ -14,6 +14,8 @@ import type {
   PrReviewApiResponse,
   ScopeAnalysis,
   Member,
+  ActivityEntry,
+  ProjectMetrics,
 } from '@/types'
 
 // Auth
@@ -244,6 +246,22 @@ export const healthApi = {
       dockerServices: Record<string, boolean>
       uptime: number
     }>('/health/diagnostics'),
+}
+
+// Activity
+export const activityApi = {
+  list: (projectId: string, params?: { action?: string; limit?: number; offset?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.action) query.set('action', params.action)
+    if (params?.limit) query.set('limit', String(params.limit))
+    if (params?.offset) query.set('offset', String(params.offset))
+    const qs = query.toString()
+    return api.get<{ activity: ActivityEntry[]; total: number }>(
+      `/projects/${projectId}/activity${qs ? `?${qs}` : ''}`,
+    )
+  },
+  metrics: (projectId: string) =>
+    api.get<ProjectMetrics>(`/projects/${projectId}/activity/metrics`),
 }
 
 // Agent Mail (proxy)

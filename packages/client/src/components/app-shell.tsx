@@ -11,6 +11,7 @@ const CapturesPage = lazy(() => import('@/pages/captures-page'))
 const AgentsPage = lazy(() => import('@/pages/agents-page'))
 const AgentStreamPage = lazy(() => import('@/pages/agent-stream-page'))
 const GraphPage = lazy(() => import('@/pages/graph-page'))
+const ActivityPage = lazy(() => import('@/pages/activity-page'))
 const SettingsPage = lazy(() => import('@/pages/settings-page'))
 const PrReviewPage = lazy(() => import('@/pages/pr-review-page'))
 
@@ -33,6 +34,7 @@ export function AppShell() {
           <Route path="/captures" element={<CapturesPage />} />
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/agents/:sessionId" element={<AgentStreamPage />} />
+          <Route path="/activity" element={<ActivityPage />} />
           <Route path="/graph" element={<GraphPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/review/:sessionId" element={<PrReviewPage />} />

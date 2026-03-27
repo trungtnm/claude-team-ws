@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
-import { ChevronDown, Plus, LayoutDashboard, Inbox, Bot, GitBranch, Settings } from 'lucide-react'
+import { ChevronDown, Plus, LayoutDashboard, Inbox, Bot, Activity, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -20,7 +20,7 @@ const navItems = [
   { to: '/board', label: 'Board', icon: LayoutDashboard },
   { to: '/captures', label: 'Captures', icon: Inbox },
   { to: '/agents', label: 'Agents', icon: Bot },
-  { to: '/graph', label: 'Graph', icon: GitBranch },
+  { to: '/activity', label: 'Activity', icon: Activity },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
 

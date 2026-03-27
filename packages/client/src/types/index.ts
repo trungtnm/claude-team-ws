@@ -348,6 +348,59 @@ export interface GraphNodeData {
   type: string
 }
 
+// ─── Activity Types ──────────────────────────────────────────────────────────
+
+export type ActivityAction =
+  | 'capture_created'
+  | 'epic_created'
+  | 'session_started'
+  | 'session_completed'
+  | 'session_failed'
+  | 'pr_created'
+  | 'pr_merged'
+  | 'rule_created'
+  | 'bead_status_changed'
+
+export interface ActivityEntry {
+  id: number
+  action: ActivityAction
+  details: string | null
+  created_at: number
+  user_id: string | null
+  user_name: string | null
+}
+
+export interface ProjectMetrics {
+  sessions: {
+    total: number
+    completed: number
+    failed: number
+    running: number
+    successRate: number
+  }
+  captures: {
+    total: number
+    pending: number
+    triaged: number
+    deferred: number
+  }
+  epics: {
+    total: number
+    byStatus: {
+      blocked: number
+      ready: number
+      in_progress: number
+      in_review: number
+      done: number
+    }
+  }
+  prs: {
+    open: number
+    merged: number
+    avgCycleHours: number
+  }
+}
+
 // ─── Board Constants ────────────────────────────────────────────────────────
 
 export const boardColumns: { id: UiStatus; label: string }[] = [

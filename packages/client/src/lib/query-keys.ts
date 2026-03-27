@@ -78,6 +78,15 @@ export const queryKeys = {
     list: (projectId: string) => [...queryKeys.members.all(projectId), 'list'] as const,
   },
 
+  // Activity (scoped to project)
+  activity: {
+    all: (projectId: string) => ['activity', { projectId }] as const,
+    list: (projectId: string, action?: string) =>
+      [...queryKeys.activity.all(projectId), 'list', { action }] as const,
+    metrics: (projectId: string) =>
+      [...queryKeys.activity.all(projectId), 'metrics'] as const,
+  },
+
   // Notifications (user-scoped, no projectId)
   notifications: {
     all: ['notifications'] as const,
