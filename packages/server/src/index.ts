@@ -1,4 +1,6 @@
 import { createServer } from 'http'
+import { fileURLToPath } from 'url'
+import path from 'path'
 import express, { type Express } from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
@@ -33,6 +35,7 @@ import notificationsRouter from './routes/notifications.js'
 import reviewsRouter from './routes/reviews.js'
 import mailRouter from './routes/mail.js'
 import { createBeadsSyncRouter } from './routes/beads-sync.js'
+import { createActivityRouter } from './routes/activity.js'
 
 const PORT = parseInt(process.env.PORT || '3000', 10)
 const PROJECT_ROOT = process.env.PROJECT_ROOT || '.'
@@ -50,7 +53,9 @@ const app: Express = express()
 app.set('trust proxy', 1)
 
 // Security & parsing middleware
-app.use(helmet())
+app.use(helmet({
+  contentSecurityPolicy: false, // Vite build uses inline scripts; CSP managed at Cloudflare edge
+}))
 app.use(cors({
   origin: process.env.NODE_ENV === 'production'
     ? false
@@ -102,6 +107,7 @@ app.use('/api/projects/:projectId/webhooks', authenticate, requireProjectMember,
 app.use('/api/projects/:projectId/reviews', authenticate, requireProjectMember, reviewsRouter)
 app.use('/api/projects/:projectId/mail', authenticate, requireProjectMember, mailRouter)
 app.use('/api/projects/:projectId/beads-sync', authenticate, requireProjectMember, createBeadsSyncRouter({ beadsService, projectRoot: PROJECT_ROOT }))
+app.use('/api/projects/:projectId/activity', createActivityRouter({ db }))
 
 // User-scoped routes (no project context)
 app.use('/api/notifications', authenticate, notificationsRouter)
@@ -115,6 +121,27 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   res.status(status).json({
     error: err.message,
     ...(process.env.NODE_ENV !== 'production' && { stack: err.stack }),
+  })
+})
+
+// ─── Static File Serving (production) ────────────────────────────────────────
+
+// Serve the Vite-built client in production (or when the dist exists).
+// In dev, Vite dev server handles this via proxy.
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const clientDist = path.resolve(__dirname, '../../../client/dist')
+
+app.use(express.static(clientDist))
+
+// SPA fallback — any non-API route serves index.html so client-side routing works
+app.get('*', (_req, res, next) => {
+  // Don't intercept API or socket.io routes
+  if (_req.path.startsWith('/api') || _req.path.startsWith('/socket.io')) {
+    next()
+    return
+  }
+  res.sendFile(path.join(clientDist, 'index.html'), (err) => {
+    if (err) next() // If dist doesn't exist (dev mode), just skip
   })
 })
 
