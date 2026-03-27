@@ -7,6 +7,7 @@ import { webhookConfigs } from '../db/schema.js'
 import { authenticate, requireRole } from '../middleware/auth.js'
 import { requireProjectMember } from '../middleware/project-access.js'
 import { emitToProject } from '../services/socket-manager.js'
+import { dispatch } from '../services/webhook-dispatcher.js'
 import { logError } from '../utils/log-error.js'
 
 // Mounted at /api/projects/:projectId/webhooks
@@ -159,6 +160,46 @@ router.patch('/:webhookId', requireRole('pm', 'techlead'), (req, res) => {
     res.json({ webhook: enriched })
   } catch (err) {
       res.status(500).json({ error: logError('webhooks', err) })
+  }
+})
+
+// POST /:webhookId/test — send test notification
+router.post('/:webhookId/test', requireRole('pm', 'techlead'), async (req, res) => {
+  try {
+    const projectId = param(req, 'projectId')
+    const webhookId = param(req, 'webhookId')
+
+    const webhook = db
+      .select()
+      .from(webhookConfigs)
+      .where(and(eq(webhookConfigs.id, webhookId), eq(webhookConfigs.project_id, projectId)))
+      .get()
+
+    if (!webhook) {
+      res.status(404).json({ error: 'Webhook not found' })
+      return
+    }
+
+    const result = await dispatch(
+      webhook.type as 'slack' | 'discord' | 'telegram',
+      webhook.url,
+      {
+        event: 'test',
+        projectName: 'Claude Team Workspace',
+      },
+    )
+
+    if (result.success) {
+      res.json({ success: true, statusCode: result.statusCode })
+    } else {
+      res.status(502).json({
+        success: false,
+        statusCode: result.statusCode,
+        error: result.error,
+      })
+    }
+  } catch (err) {
+    res.status(500).json({ error: logError('webhooks', err) })
   }
 })
 

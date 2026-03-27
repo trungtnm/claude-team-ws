@@ -21,7 +21,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
-import { useWebhooks, useCreateWebhook, useUpdateWebhook, useDeleteWebhook } from '@/hooks/use-settings'
+import { useWebhooks, useCreateWebhook, useUpdateWebhook, useDeleteWebhook, useSendTestWebhook } from '@/hooks/use-settings'
 import type { WebhookConfig } from '@/types'
 
 type WebhookType = WebhookConfig['type']
@@ -301,6 +301,7 @@ function WebhookCard({ webhook }: { webhook: WebhookConfig }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const updateWebhook = useUpdateWebhook()
   const deleteWebhook = useDeleteWebhook()
+  const sendTest = useSendTestWebhook()
 
   const config = typeConfig[webhook.type]
   const Icon = config.icon
@@ -324,7 +325,7 @@ function WebhookCard({ webhook }: { webhook: WebhookConfig }) {
   }
 
   const handleSendTest = () => {
-    toast.success(`Test notification sent to ${config.label}`)
+    sendTest.mutate(webhook.id)
   }
 
   const handleSaveUrl = () => {
@@ -399,9 +400,9 @@ function WebhookCard({ webhook }: { webhook: WebhookConfig }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="gap-1 text-xs" onClick={handleSendTest}>
-            <Send className="h-3 w-3" />
-            Send Test
+          <Button variant="outline" size="sm" className="gap-1 text-xs" onClick={handleSendTest} disabled={sendTest.isPending}>
+            {sendTest.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+            {sendTest.isPending ? 'Sending...' : 'Send Test'}
           </Button>
           <Button
             variant={webhook.enabled ? 'outline' : 'default'}

@@ -297,3 +297,17 @@ export function useDeleteWebhook() {
     },
   })
 }
+
+export function useSendTestWebhook() {
+  const { projectId } = useProject()
+
+  return useMutation({
+    mutationFn: (webhookId: string) => webhooksApi.sendTest(projectId, webhookId),
+    onSuccess: () => {
+      toast.success('Test notification sent successfully')
+    },
+    onError: (err) => {
+      toast.error(`Test failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    },
+  })
+}

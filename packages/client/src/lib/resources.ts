@@ -220,6 +220,10 @@ export const webhooksApi = {
     api.patch<{ webhook: WebhookConfig }>(`/projects/${projectId}/webhooks/${webhookId}`, data),
   delete: (projectId: string, webhookId: string) =>
     api.delete(`/projects/${projectId}/webhooks/${webhookId}`),
+  sendTest: (projectId: string, webhookId: string) =>
+    api.post<{ success: boolean; statusCode: number; error?: string }>(
+      `/projects/${projectId}/webhooks/${webhookId}/test`,
+    ),
 }
 
 // Notifications
