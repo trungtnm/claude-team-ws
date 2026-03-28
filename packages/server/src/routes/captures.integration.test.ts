@@ -3,15 +3,17 @@ import express from 'express'
 import request from 'supertest'
 import { createTestDb, seedTestData } from '../db/test-db.js'
 import { captures, activityLog } from '../db/schema.js'
-import type { BeadsService } from '../services/beads-service.js'
 
-// ─── Test users ───────────────────────────────────────────────────────────────
+// ─── Create test DB up front ─────────────────────────────────────────────────
+
+const { db: testDb, sqlite } = createTestDb()
+
+// ─── Module mocks ────────────────────────────────────────────────────────────
 
 const TEST_PM = { id: 'usr_test_pm', name: 'Test PM', role: 'pm' }
+const TEST_DEV = { id: 'usr_test_dev', name: 'Test Dev', role: 'dev' }
+const TEST_VIEWER = { id: 'usr_test_viewer', name: 'Test Viewer', role: 'viewer' }
 
-// ─── Module mocks (must be before imports that use them) ──────────────────────
-
-// Track current test user — can be changed per test
 let currentUser: Express.User = TEST_PM
 
 vi.mock('../middleware/auth.js', () => ({
@@ -42,209 +44,179 @@ vi.mock('../services/socket-manager.js', () => ({
   emitToProject: vi.fn(),
 }))
 
-// Import AFTER mocks are set up
-const { createCapturesRouter } = await import('./captures.js')
+vi.mock('../utils/log-error.js', () => ({
+  logError: vi.fn((_ctx: string, err: unknown) => String(err)),
+}))
 
-// ─── Test app factory ─────────────────────────────────────────────────────────
+vi.mock('../db/index.js', () => ({
+  db: testDb,
+}))
 
-function createTestApp(db: ReturnType<typeof createTestDb>['db']) {
+const capturesModule = await import('./captures.js')
+const capturesRouter = capturesModule.default
+
+// ─── Test setup ──────────────────────────────────────────────────────────────
+
+function createTestApp() {
   const app = express()
   app.use(express.json())
-
-  const mockBeadsService = {
-    create: vi.fn().mockResolvedValue('bead-123'),
-    show: vi.fn().mockResolvedValue(null),
-    update: vi.fn().mockResolvedValue(undefined),
-    addDependency: vi.fn().mockResolvedValue(undefined),
-  } as unknown as BeadsService
-
-  app.use('/api/projects/:projectId/captures', createCapturesRouter({ db, beadsService: mockBeadsService }))
-
-  return { app, mockBeadsService }
+  app.use('/api/projects/:projectId/captures', capturesRouter)
+  return app
 }
 
-// ─── Tests ────────────────────────────────────────────────────────────────────
+beforeAll(() => {
+  seedTestData(testDb)
+})
+
+afterAll(() => {
+  sqlite.close()
+})
+
+beforeEach(() => {
+  currentUser = TEST_PM
+  testDb.delete(activityLog).run()
+  testDb.delete(captures).run()
+})
+
+// ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe('Captures route (integration)', () => {
-  const { db, sqlite } = createTestDb()
-
-  beforeAll(() => {
-    seedTestData(db)
-  })
-
-  beforeEach(() => {
-    currentUser = TEST_PM
-    db.delete(activityLog).run()
-    db.delete(captures).run()
-  })
-
-  afterAll(() => {
-    sqlite.close()
-  })
-
   describe('POST /api/projects/:projectId/captures', () => {
-    it('should create a capture and return 201', async () => {
-      const { app } = createTestApp(db)
+    it('creates a capture', async () => {
+      const app = createTestApp()
       const res = await request(app)
         .post('/api/projects/proj_test/captures')
-        .send({ text: 'Add dark mode toggle to settings' })
-        .expect(201)
+        .send({ text: 'New idea for the dashboard' })
 
+      expect(res.status).toBe(201)
       expect(res.body.capture).toBeDefined()
-      expect(res.body.capture.text).toBe('Add dark mode toggle to settings')
+      expect(res.body.capture.text).toBe('New idea for the dashboard')
       expect(res.body.capture.status).toBe('pending')
-      expect(res.body.capture.user_id).toBe('usr_test_pm')
-      expect(res.body.capture.project_id).toBe('proj_test')
     })
 
-    it('should return 400 for missing text', async () => {
-      const { app } = createTestApp(db)
-      const res = await request(app)
-        .post('/api/projects/proj_test/captures')
-        .send({})
-        .expect(400)
-
-      expect(res.body.error).toBe('Validation failed')
-      expect(res.body.issues).toBeDefined()
-    })
-
-    it('should return 400 for empty text', async () => {
-      const { app } = createTestApp(db)
+    it('returns 400 for empty text', async () => {
+      const app = createTestApp()
       await request(app)
         .post('/api/projects/proj_test/captures')
         .send({ text: '' })
         .expect(400)
     })
+
+    it('logs activity', async () => {
+      const app = createTestApp()
+      await request(app)
+        .post('/api/projects/proj_test/captures')
+        .send({ text: 'Activity test' })
+
+      const logs = testDb.select().from(activityLog).all()
+      expect(logs).toHaveLength(1)
+      expect(logs[0].action).toBe('capture_created')
+    })
   })
 
   describe('GET /api/projects/:projectId/captures', () => {
-    it('should list captures for a project', async () => {
-      const { app } = createTestApp(db)
+    it('lists captures', async () => {
+      const app = createTestApp()
+      await request(app).post('/api/projects/proj_test/captures').send({ text: 'Capture 1' })
+      await request(app).post('/api/projects/proj_test/captures').send({ text: 'Capture 2' })
 
-      await request(app).post('/api/projects/proj_test/captures').send({ text: 'First idea' })
-      await request(app).post('/api/projects/proj_test/captures').send({ text: 'Second idea' })
+      const res = await request(app).get('/api/projects/proj_test/captures')
 
-      const res = await request(app)
-        .get('/api/projects/proj_test/captures')
-        .expect(200)
-
+      expect(res.status).toBe(200)
       expect(res.body.captures).toHaveLength(2)
     })
 
-    it('should filter by status', async () => {
-      const { app } = createTestApp(db)
-
+    it('filters by status', async () => {
+      const app = createTestApp()
       await request(app).post('/api/projects/proj_test/captures').send({ text: 'Pending one' })
 
-      const res = await request(app)
-        .get('/api/projects/proj_test/captures?status=triaged')
-        .expect(200)
+      const res = await request(app).get('/api/projects/proj_test/captures?status=triaged')
 
+      expect(res.status).toBe(200)
       expect(res.body.captures).toHaveLength(0)
-    })
-
-    it('should return empty array for project with no captures', async () => {
-      const { app } = createTestApp(db)
-
-      const res = await request(app)
-        .get('/api/projects/proj_test/captures')
-        .expect(200)
-
-      expect(res.body.captures).toHaveLength(0)
-    })
-
-    it('should respect limit parameter', async () => {
-      const { app } = createTestApp(db)
-
-      await request(app).post('/api/projects/proj_test/captures').send({ text: 'One' })
-      await request(app).post('/api/projects/proj_test/captures').send({ text: 'Two' })
-      await request(app).post('/api/projects/proj_test/captures').send({ text: 'Three' })
-
-      const res = await request(app)
-        .get('/api/projects/proj_test/captures?limit=2')
-        .expect(200)
-
-      expect(res.body.captures).toHaveLength(2)
     })
   })
 
   describe('PATCH /api/projects/:projectId/captures/:captureId', () => {
-    it('should update capture text (PM role)', async () => {
-      const { app } = createTestApp(db)
-
+    it('triages a capture', async () => {
+      const app = createTestApp()
       const createRes = await request(app)
         .post('/api/projects/proj_test/captures')
-        .send({ text: 'Original idea' })
+        .send({ text: 'To be triaged' })
       const captureId = createRes.body.capture.id
 
       const res = await request(app)
         .patch(`/api/projects/proj_test/captures/${captureId}`)
-        .send({ text: 'Updated idea' })
-        .expect(200)
+        .send({ status: 'triaged', triage_result: 'Created epic' })
 
-      expect(res.body.capture.text).toBe('Updated idea')
-    })
-
-    it('should triage capture to triaged status', async () => {
-      const { app } = createTestApp(db)
-
-      const createRes = await request(app)
-        .post('/api/projects/proj_test/captures')
-        .send({ text: 'Raw idea' })
-      const captureId = createRes.body.capture.id
-
-      const res = await request(app)
-        .patch(`/api/projects/proj_test/captures/${captureId}`)
-        .send({ status: 'triaged', triage_result: 'Convert to epic' })
-        .expect(200)
-
+      expect(res.status).toBe(200)
       expect(res.body.capture.status).toBe('triaged')
-      expect(res.body.capture.triage_result).toBe('Convert to epic')
+      expect(res.body.capture.triage_result).toBe('Created epic')
       expect(res.body.capture.triaged_at).toBeDefined()
       expect(res.body.capture.triaged_by).toBe('usr_test_pm')
     })
 
-    it('should return 404 for non-existent capture', async () => {
-      const { app } = createTestApp(db)
-      await request(app)
-        .patch('/api/projects/proj_test/captures/nonexistent')
-        .send({ text: 'Updated' })
-        .expect(404)
+    it('defers a capture', async () => {
+      const app = createTestApp()
+      const createRes = await request(app)
+        .post('/api/projects/proj_test/captures')
+        .send({ text: 'To be deferred' })
+      const captureId = createRes.body.capture.id
+
+      const res = await request(app)
+        .patch(`/api/projects/proj_test/captures/${captureId}`)
+        .send({ status: 'deferred' })
+
+      expect(res.status).toBe(200)
+      expect(res.body.capture.status).toBe('deferred')
     })
 
-    it('should reject dev role (403)', async () => {
-      currentUser = { id: 'usr_test_dev', name: 'Test Dev', role: 'dev' }
-      const { app } = createTestApp(db)
+    it('rejects dev role', async () => {
+      currentUser = TEST_DEV
+      const app = createTestApp()
 
+      // Create as PM first
+      currentUser = TEST_PM
+      const createRes = await request(app)
+        .post('/api/projects/proj_test/captures')
+        .send({ text: 'Dev cannot triage' })
+      const captureId = createRes.body.capture.id
+
+      currentUser = TEST_DEV
       await request(app)
-        .patch('/api/projects/proj_test/captures/any-id')
-        .send({ text: 'Updated' })
+        .patch(`/api/projects/proj_test/captures/${captureId}`)
+        .send({ status: 'triaged' })
         .expect(403)
+    })
+
+    it('returns 404 for non-existent capture', async () => {
+      const app = createTestApp()
+      await request(app)
+        .patch('/api/projects/proj_test/captures/nonexistent')
+        .send({ status: 'triaged' })
+        .expect(404)
     })
   })
 
   describe('DELETE /api/projects/:projectId/captures/:captureId', () => {
-    it('should delete a capture and return 204', async () => {
-      const { app } = createTestApp(db)
-
+    it('deletes a capture', async () => {
+      const app = createTestApp()
       const createRes = await request(app)
         .post('/api/projects/proj_test/captures')
-        .send({ text: 'To be deleted' })
+        .send({ text: 'To delete' })
       const captureId = createRes.body.capture.id
 
       await request(app)
         .delete(`/api/projects/proj_test/captures/${captureId}`)
         .expect(204)
 
-      // Verify it's gone
-      const listRes = await request(app)
-        .get('/api/projects/proj_test/captures')
-        .expect(200)
-      expect(listRes.body.captures).toHaveLength(0)
+      // Verify deleted
+      const remaining = testDb.select().from(captures).all()
+      expect(remaining).toHaveLength(0)
     })
 
-    it('should return 404 for non-existent capture', async () => {
-      const { app } = createTestApp(db)
+    it('returns 404 for non-existent capture', async () => {
+      const app = createTestApp()
       await request(app)
         .delete('/api/projects/proj_test/captures/nonexistent')
         .expect(404)

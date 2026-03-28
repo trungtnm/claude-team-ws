@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  CheckCircle2, Circle, MessageSquare, Send,
-  Image, FileText, Film, Inbox, Loader2,
+  MessageSquare, Send, Inbox, Loader2,
 } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogTitle, DialogDescription,
@@ -12,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { PriorityBadge } from '@/components/board/priority-badge'
-import { BeadList } from '@/components/board/bead-list'
+// BeadList removed — epics now use app DB as single source of truth
 import { EpicSidebarMeta } from '@/components/board/epic-sidebar-meta'
 import { EpicFooterActions } from '@/components/board/epic-footer-actions'
 import { useBoardStore } from '@/stores/board-store'
@@ -40,25 +39,6 @@ const uiStatusConfig: Record<string, { className: string; label: string }> = {
 
 type TabId = 'overview' | 'sources' | 'dep-tree'
 
-function isSafeImageUrl(url: unknown): boolean {
-  if (typeof url !== 'string' || !url) return false
-  try {
-    const parsed = new URL(url, window.location.origin)
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:'
-  } catch {
-    return false
-  }
-}
-
-function formatTimestamp(epoch: number): string {
-  return new Date(epoch * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-function fileIcon(type: string) {
-  if (type.startsWith('image/')) return Image
-  if (type.startsWith('video/')) return Film
-  return FileText
-}
 
 export function EpicDetailSheet() {
   const { selectedEpicId, setSelectedEpicId } = useBoardStore()
@@ -68,7 +48,7 @@ export function EpicDetailSheet() {
 
   const epic = epicDetail ?? undefined
   const epicSessions = epicDetail?.sessions ?? []
-  const epicBeads = epicDetail?.beads ?? []
+  // Beads removed — epics are now self-contained in app DB
 
   const [activeTab, setActiveTab] = useState<TabId>('overview')
   const [commentText, setCommentText] = useState('')
@@ -78,7 +58,7 @@ export function EpicDetailSheet() {
   const [localStatus, setLocalStatus] = useState(epic?.uiStatus ?? 'blocked')
   const [localPriority, setLocalPriority] = useState(epic?.priority ?? 2)
   const [localType, setLocalType] = useState(epic?.type ?? 'feature')
-  const [localAssigneeId, setLocalAssigneeId] = useState(epic?.assigneeId ?? '')
+  const [localAssigneeId, setLocalAssigneeId] = useState(epic?.assignee ?? '')
   const [localLabels, setLocalLabels] = useState(epic?.labels ?? [])
   const [localDueDate, setLocalDueDate] = useState('')
   const [localEstimate, setLocalEstimate] = useState('')
@@ -103,10 +83,10 @@ export function EpicDetailSheet() {
       setLocalStatus(epic.uiStatus)
       setLocalPriority(epic.priority)
       setLocalType(epic.type)
-      setLocalAssigneeId(epic.assigneeId)
+      setLocalAssigneeId(epic.assignee ?? '')
       setLocalLabels([...epic.labels])
     }
-  }, [epic?.id, epic?.uiStatus, epic?.priority, epic?.type, epic?.assigneeId, epic?.updatedAt])
+  }, [epic?.id, epic?.uiStatus, epic?.priority, epic?.type, epic?.assignee, epic?.updatedAt])
 
   const { data: members = [] } = useMembers()
   const localAssigneeMember = members.find((m) => m.userId === localAssigneeId)
@@ -114,10 +94,7 @@ export function EpicDetailSheet() {
     ? { id: localAssigneeMember.userId, name: localAssigneeMember.name, initials: getInitials(localAssigneeMember.name), color: getUserColor(localAssigneeMember.userId) }
     : undefined
 
-  const progressPercent = epic && epic.beadProgress.total > 0
-    ? (epic.beadProgress.done / epic.beadProgress.total) * 100 : 0
-  const checkedIndices = new Set([0, 2])
-  const sourceCount = epic?.sourceCaptures?.length ?? 0
+  const sourceCount = 0
 
   // ─── Mutation helpers ───────────────────────────────────────────────────────
 
@@ -147,7 +124,7 @@ export function EpicDetailSheet() {
     const prev = localPriority
     setLocalPriority(idx as 0|1|2|3)
     updateEpic.mutate(
-      { epicId: epic.id, beadPriority: idx },
+      { epicId: epic.id, priority: idx },
       {
         onSuccess: () => toast.success(`Priority → P${idx}`),
         onError: (err) => { setLocalPriority(prev); toast.error(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`) },
@@ -160,7 +137,7 @@ export function EpicDetailSheet() {
     const prev = localType
     setLocalType(t as typeof localType)
     updateEpic.mutate(
-      { epicId: epic.id, beadType: t },
+      { epicId: epic.id, type: t },
       {
         onSuccess: () => toast.success(`Type → ${t}`),
         onError: (err) => { setLocalType(prev); toast.error(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`) },
@@ -174,7 +151,7 @@ export function EpicDetailSheet() {
     setLocalAssigneeId(userId)
     const u = members.find((m) => m.userId === userId)
     updateEpic.mutate(
-      { epicId: epic.id, beadAssignee: userId },
+      { epicId: epic.id, assignee: userId || null },
       {
         onSuccess: () => toast.success(userId === '' ? 'Unassigned' : `Assigned to ${u?.name}`),
         onError: (err) => { setLocalAssigneeId(prev); toast.error(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`) },
@@ -191,7 +168,7 @@ export function EpicDetailSheet() {
     setLocalLabels(newLabels)
     setLabelInput('')
     updateEpic.mutate(
-      { epicId: epic.id, beadLabels: newLabels },
+      { epicId: epic.id, labels: newLabels },
       {
         onSuccess: () => toast.success(`Label "${val}" added`),
         onError: (err) => { setLocalLabels(localLabels); toast.error(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`) },
@@ -204,7 +181,7 @@ export function EpicDetailSheet() {
     const newLabels = localLabels.filter((l) => l !== label)
     setLocalLabels(newLabels)
     updateEpic.mutate(
-      { epicId: epic.id, beadLabels: newLabels },
+      { epicId: epic.id, labels: newLabels },
       {
         onSuccess: () => toast.success('Label removed'),
         onError: (err) => { setLocalLabels(localLabels); toast.error(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`) },
@@ -257,7 +234,7 @@ export function EpicDetailSheet() {
               <div className="flex items-center gap-2 mb-2">
                 <PriorityBadge priority={epic.priority} />
                 <Badge className={cn('text-[10px]', typeColors[epic.type])}>{epic.type}</Badge>
-                <code className="text-[10px] text-ink-muted font-mono">{epic.beadId}</code>
+                <code className="text-[10px] text-ink-muted font-mono">{epic.id}</code>
               </div>
               <h2 className="text-xl font-semibold text-ink leading-tight">{epic.title}</h2>
 
@@ -296,38 +273,6 @@ export function EpicDetailSheet() {
                       <p className="text-sm leading-relaxed text-ink-secondary">{epic.description}</p>
                     </div>
 
-                    {epic.acceptanceCriteria && epic.acceptanceCriteria.length > 0 && (
-                      <div>
-                        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-muted">Acceptance Criteria</h4>
-                        <ul className="space-y-2">
-                          {epic.acceptanceCriteria.map((c, i) => {
-                            const done = checkedIndices.has(i)
-                            return (
-                              <li key={i} className="flex items-start gap-2">
-                                {done ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-400" /> : <Circle className="mt-0.5 h-4 w-4 shrink-0 text-ink-muted" />}
-                                <span className={cn('text-sm', done ? 'text-ink-muted line-through' : 'text-ink-secondary')}>{c}</span>
-                              </li>
-                            )
-                          })}
-                        </ul>
-                      </div>
-                    )}
-
-                    <Separator />
-
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Beads</h4>
-                        <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-24 rounded-full bg-surface-elevated">
-                            <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${progressPercent}%` }} />
-                          </div>
-                          <span className="text-xs text-ink-muted">{epic.beadProgress.done}/{epic.beadProgress.total}</span>
-                        </div>
-                      </div>
-                      <BeadList beads={epicBeads} />
-                    </div>
-
                     <Separator />
 
                     <div>
@@ -348,82 +293,18 @@ export function EpicDetailSheet() {
 
                 {/* ═══ SOURCE CAPTURES TAB ═══ */}
                 {activeTab === 'sources' && (
-                  <>
-                    {sourceCount > 0 ? (
-                      <div className="space-y-4">
-                        <p className="text-xs text-ink-muted">
-                          This epic was created from {sourceCount} capture{sourceCount > 1 ? 's' : ''} during triage.
-                        </p>
-                        {epic.sourceCaptures!.map((cap, i) => (
-                          <div key={i} className="rounded-[var(--radius-lg)] border border-edge bg-surface-elevated">
-                            <div className="flex items-center gap-2 px-4 py-3 border-b border-edge">
-                              <Inbox className="h-3.5 w-3.5 text-accent" />
-                              <span className="text-xs font-medium text-ink">{cap.author}</span>
-                              <span className="text-[11px] text-ink-disabled">{formatTimestamp(cap.createdAt)}</span>
-                            </div>
-                            <div className="px-4 py-3">
-                              <p className="text-sm text-ink-secondary leading-relaxed">{cap.text}</p>
-                            </div>
-                            {cap.attachments && cap.attachments.length > 0 && (
-                              <div className="px-4 pb-3">
-                                <div className="flex flex-wrap gap-2">
-                                  {cap.attachments.map((att, j) => {
-                                    const Icon = fileIcon(att.type)
-                                    return att.type.startsWith('image/') && isSafeImageUrl(att.preview) ? (
-                                      <div key={j} className="group relative rounded-[var(--radius-md)] border border-edge overflow-hidden cursor-pointer hover:border-edge-hover transition-colors">
-                                        <img src={att.preview!} alt={att.name} className="h-24 w-36 object-cover" />
-                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-end">
-                                          <span className="w-full px-2 py-1 text-[10px] text-white opacity-0 group-hover:opacity-100 bg-black/50 truncate transition-opacity">{att.name}</span>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <div key={j} className="flex items-center gap-2 rounded-[var(--radius-md)] border border-edge bg-surface-base px-3 py-2 hover:bg-surface-raised transition-colors cursor-pointer">
-                                        <Icon className="h-4 w-4 text-ink-muted shrink-0" />
-                                        <div className="min-w-0">
-                                          <p className="text-xs text-ink truncate">{att.name}</p>
-                                          <p className="text-[10px] text-ink-disabled">{att.size}</p>
-                                        </div>
-                                      </div>
-                                    )
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-16 text-center">
-                        <Inbox className="h-10 w-10 text-ink-disabled mb-3" />
-                        <p className="text-sm text-ink-muted">No source captures</p>
-                        <p className="text-xs text-ink-disabled mt-1">This epic was created without linking captures</p>
-                      </div>
-                    )}
-                  </>
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <Inbox className="h-10 w-10 text-ink-disabled mb-3" />
+                    <p className="text-sm text-ink-muted">No source captures</p>
+                    <p className="text-xs text-ink-disabled mt-1">This epic was created without linking captures</p>
+                  </div>
                 )}
 
                 {/* ═══ DEP TREE TAB ═══ */}
                 {activeTab === 'dep-tree' && (
-                  <div className="space-y-1">
-                    <p className="text-xs text-ink-muted mb-4">
-                      Dependency tree from <code className="text-accent font-mono">br dep tree {epic.beadId}</code>
-                    </p>
-                    {epicBeads.length > 0 ? (
-                      epicBeads.map((bead) => {
-                        const statusColor = bead.status === 'done' ? 'text-green-400' : bead.status === 'in_progress' ? 'text-blue-400' : 'text-ink-muted'
-                        const StatusIcon = bead.status === 'done' ? CheckCircle2 : Circle
-                        return (
-                          <div key={bead.id} className="flex items-center gap-2 py-1.5 pl-2">
-                            <StatusIcon className={cn('h-3.5 w-3.5 shrink-0', statusColor)} />
-                            <code className="text-[11px] text-ink-muted font-mono">{bead.id}</code>
-                            <span className="text-sm text-ink">{bead.title}</span>
-                            <Badge variant="outline" className="text-[9px] ml-auto">{bead.status}</Badge>
-                          </div>
-                        )
-                      })
-                    ) : (
-                      <p className="text-sm text-ink-muted">No child beads found.</p>
-                    )}
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <p className="text-sm text-ink-muted">Dependency tree not available</p>
+                    <p className="text-xs text-ink-disabled mt-1">Epics now use the app database as single source of truth</p>
                   </div>
                 )}
               </div>

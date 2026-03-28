@@ -29,15 +29,11 @@ export function EpicCard({ epic, isDragOverlay = false }: EpicCardProps) {
     disabled: isDragOverlay,
   })
   const { data: members = [] } = useMembers()
-  const member = members.find((m) => m.userId === epic.assigneeId)
+  const member = epic.assignee ? members.find((m) => m.userId === epic.assignee) : undefined
   const assignee = member
     ? { name: member.name, initials: getInitials(member.name), color: getUserColor(member.userId) }
     : undefined
   const needsInput = epic.agentStatus === 'waiting_input'
-  const progressPercent =
-    epic.beadProgress.total > 0
-      ? (epic.beadProgress.done / epic.beadProgress.total) * 100
-      : 0
 
   return (
     <button
@@ -79,19 +75,6 @@ export function EpicCard({ epic, isDragOverlay = false }: EpicCardProps) {
         {epic.title}
       </p>
 
-      {/* Progress bar */}
-      <div className="mt-2.5">
-        <div className="h-1.5 rounded-full bg-surface-elevated">
-          <div
-            className="h-full rounded-full bg-accent transition-all"
-            style={{ width: `${progressPercent}%` }}
-          />
-        </div>
-        <p className="mt-1 text-xs text-ink-muted">
-          {epic.beadProgress.done}/{epic.beadProgress.total} beads
-        </p>
-      </div>
-
       {/* Agent status */}
       {epic.agentStatus && (
         <div className={cn(
@@ -108,7 +91,7 @@ export function EpicCard({ epic, isDragOverlay = false }: EpicCardProps) {
             'text-xs',
             needsInput ? 'text-amber-400 font-medium' : 'text-ink-secondary',
           )}>
-            {epic.agentStatus === 'running' ? 'running' : 'needs input'}
+            {epic.agentStatus === 'running' ? 'running' : epic.agentStatus === 'idle' ? 'idle' : 'needs input'}
           </span>
         </div>
       )}

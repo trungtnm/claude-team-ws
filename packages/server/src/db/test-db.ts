@@ -21,7 +21,10 @@ export function createTestDb(): { db: BetterSQLite3Database<typeof schema>; sqli
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE,
       project_root TEXT NOT NULL UNIQUE, max_concurrent_agents INTEGER NOT NULL DEFAULT 3,
-      ask_question_mode TEXT NOT NULL DEFAULT 'hybrid', picture_url TEXT,
+      ask_question_mode TEXT NOT NULL DEFAULT 'hybrid',
+      safety_mode TEXT NOT NULL DEFAULT 'a', command_policy TEXT,
+      max_session_input_tokens INTEGER, max_session_output_tokens INTEGER, max_session_tool_calls INTEGER,
+      picture_url TEXT,
       created_at INTEGER NOT NULL DEFAULT (unixepoch()), updated_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
     CREATE TABLE IF NOT EXISTS repos (
@@ -47,7 +50,10 @@ export function createTestDb(): { db: BetterSQLite3Database<typeof schema>; sqli
     );
     CREATE TABLE IF NOT EXISTS epics (
       id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
-      bead_epic_id TEXT NOT NULL, git_branches TEXT NOT NULL DEFAULT '[]',
+      title TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '',
+      priority INTEGER NOT NULL DEFAULT 2, type TEXT NOT NULL DEFAULT 'task',
+      labels TEXT NOT NULL DEFAULT '[]', assignee TEXT,
+      git_branches TEXT NOT NULL DEFAULT '[]',
       ui_status TEXT NOT NULL DEFAULT 'blocked', scope_analysis TEXT, split_proposal TEXT,
       created_at INTEGER NOT NULL DEFAULT (unixepoch()), updated_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
@@ -55,7 +61,9 @@ export function createTestDb(): { db: BetterSQLite3Database<typeof schema>; sqli
       id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
       epic_id TEXT REFERENCES epics(id), user_id TEXT NOT NULL REFERENCES users(id),
       name TEXT, claude_session_id TEXT, agent_mail_name TEXT, model TEXT NOT NULL DEFAULT 'sonnet',
-      status TEXT NOT NULL DEFAULT 'queued', prompt TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued',
+      permission_mode TEXT NOT NULL DEFAULT 'default',
+      prompt TEXT NOT NULL, target_dir TEXT,
       pid INTEGER, exit_code INTEGER, pr_url TEXT, pr_status TEXT,
       started_at INTEGER, finished_at INTEGER,
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
@@ -95,6 +103,15 @@ export function createTestDb(): { db: BetterSQLite3Database<typeof schema>; sqli
       project_id TEXT NOT NULL REFERENCES projects(id),
       type TEXT NOT NULL, title TEXT NOT NULL, body TEXT, link TEXT,
       read INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+    CREATE TABLE IF NOT EXISTS session_audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL REFERENCES sessions(id),
+      tool_name TEXT NOT NULL,
+      tool_input_summary TEXT,
+      policy_result TEXT NOT NULL DEFAULT 'allow',
+      user_decision TEXT,
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
     CREATE TABLE IF NOT EXISTS activity_log (
@@ -163,6 +180,7 @@ export function cleanAllTables(db: BetterSQLite3Database<typeof schema>) {
   // Order matters due to foreign keys
   db.delete(schema.activityLog).run()
   db.delete(schema.notifications).run()
+  db.delete(schema.sessionAuditLog).run()
   db.delete(schema.sessionEvents).run()
   db.delete(schema.agentQueue).run()
   db.delete(schema.sessions).run()

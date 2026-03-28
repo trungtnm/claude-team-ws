@@ -44,10 +44,10 @@ class ConfigWatcher {
 
   /** Stop all watchers */
   stop(): void {
-    for (const [key, entry] of this.watchers) {
+    for (const entry of this.watchers.values()) {
       entry.watcher.close()
-      this.watchers.delete(key)
     }
+    this.watchers.clear()
     for (const timer of this.debounceTimers.values()) {
       clearTimeout(timer)
     }
@@ -72,6 +72,7 @@ class ConfigWatcher {
 
       watcher.on('error', (err) => {
         console.warn(`[ConfigWatcher] error watching ${claudeDir}: ${err.message}`)
+        watcher.close()
         this.watchers.delete(key)
       })
 
@@ -88,6 +89,13 @@ class ConfigWatcher {
     if (entry) {
       entry.watcher.close()
       this.watchers.delete(key)
+    }
+    // Clear pending debounce timers for this key
+    for (const [timerKey, timer] of this.debounceTimers) {
+      if (timerKey.startsWith(`${key}:`)) {
+        clearTimeout(timer)
+        this.debounceTimers.delete(timerKey)
+      }
     }
   }
 

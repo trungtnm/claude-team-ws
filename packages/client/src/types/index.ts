@@ -8,11 +8,14 @@ export type SessionStatus =
   | 'queued'
   | 'running'
   | 'waiting_input'
+  | 'idle'
   | 'validation_failed'
   | 'completed'
   | 'failed'
   | 'cancelled'
   | 'detached'
+
+export type PermissionMode = 'default' | 'plan' | 'acceptEdits' | 'bypassPermissions'
 
 export type SessionEventType = 'system' | 'assistant' | 'tool_use' | 'tool_result' | 'result' | 'error'
 
@@ -97,22 +100,18 @@ export interface Capture {
 export interface Epic {
   id: string
   projectId: string
-  beadEpicId: string
+  title: string
+  description: string
+  priority: number
+  type: string
+  labels: string[]
+  assignee: string | null
   gitBranches: string[]
   uiStatus: UiStatus
   scopeAnalysis: ScopeAnalysis | null
   splitProposal: unknown | null
   createdAt: number
   updatedAt: number
-  // Denormalized from bead
-  bead?: {
-    title: string
-    description: string
-    priority: number
-    type: string
-    status: string
-    labels: string[]
-  }
   activeSession?: Pick<AgentSession, 'id' | 'status' | 'model'> | null
   prUrl?: string | null
   prStatus?: string | null
@@ -137,6 +136,8 @@ export interface AgentSession {
   agentMailName: string | null
   model: string
   status: SessionStatus
+  permissionMode: PermissionMode
+  targetDir: string | null
   prompt: string
   pid: number | null
   exitCode: number | null
@@ -146,9 +147,31 @@ export interface AgentSession {
   finishedAt: number | null
   createdAt: number
   // Denormalized
-  epic?: Pick<Epic, 'id' | 'beadEpicId'> & { bead?: { title: string } }
+  epic?: Pick<Epic, 'id' | 'title'>
   user?: Pick<User, 'id' | 'name' | 'avatarUrl'>
   queuePosition?: number | null
+}
+
+// ─── Capability Types ──────────────────────────────────────────────────────
+
+export interface CapabilityItem {
+  name: string
+  description?: string
+}
+
+export interface SessionCapabilities {
+  commands: CapabilityItem[]
+  agents: CapabilityItem[]
+  skills: CapabilityItem[]
+  tools: string[]
+}
+
+export interface Attachment {
+  type: 'image' | 'file'
+  name: string
+  mimeType: string
+  /** base64-encoded data */
+  data: string
 }
 
 export interface SessionEvent {
@@ -290,16 +313,14 @@ export type EpicType = 'feature' | 'bug' | 'task' | 'docs'
 /** Flat epic shape used by board components (produced by toUIEpic in use-epics hook) */
 export interface BoardEpic {
   id: string
-  beadId: string
   title: string
   description: string
   uiStatus: UiStatus
   priority: Priority
   type: EpicType
   labels: string[]
-  assigneeId: string
-  beadProgress: { total: number; done: number }
-  agentStatus?: 'running' | 'waiting_input' | null
+  assignee: string | null
+  agentStatus?: 'running' | 'waiting_input' | 'idle' | null
   activeSessionId?: string
   prUrl?: string
   prNumber?: number
@@ -307,13 +328,6 @@ export interface BoardEpic {
   gitBranch?: string
   createdAt: number
   updatedAt: number
-  acceptanceCriteria?: string[]
-  sourceCaptures?: {
-    text: string
-    author: string
-    createdAt: number
-    attachments?: { name: string; type: string; size: string; preview?: string }[]
-  }[]
 }
 
 // ─── Bead UI Types ──────────────────────────────────────────────────────────

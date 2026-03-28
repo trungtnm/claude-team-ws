@@ -26,6 +26,11 @@ export const projects = sqliteTable('projects', {
   project_root: text('project_root').notNull().unique(),
   max_concurrent_agents: integer('max_concurrent_agents').notNull().default(3),
   ask_question_mode: text('ask_question_mode', { enum: ['pause', 'auto', 'hybrid'] }).notNull().default('hybrid'),
+  safety_mode: text('safety_mode', { enum: ['a', 'b'] }).notNull().default('a'),
+  command_policy: text('command_policy'),
+  max_session_input_tokens: integer('max_session_input_tokens'),
+  max_session_output_tokens: integer('max_session_output_tokens'),
+  max_session_tool_calls: integer('max_session_tool_calls'),
   picture_url: text('picture_url'),
   created_at: integer('created_at').notNull().default(sql`(unixepoch())`),
   updated_at: integer('updated_at').notNull().default(sql`(unixepoch())`),
@@ -81,7 +86,12 @@ export const captures = sqliteTable('captures', {
 export const epics = sqliteTable('epics', {
   id: text('id').primaryKey(),
   project_id: text('project_id').notNull().references(() => projects.id),
-  bead_epic_id: text('bead_epic_id').notNull(),
+  title: text('title').notNull().default(''),
+  description: text('description').notNull().default(''),
+  priority: integer('priority').notNull().default(2),
+  type: text('type', { enum: ['feature', 'bug', 'task', 'epic', 'spike'] }).notNull().default('task'),
+  labels: text('labels').notNull().default('[]'),
+  assignee: text('assignee'),
   git_branches: text('git_branches').notNull().default('[]'),
   ui_status: text('ui_status', { enum: ['blocked', 'ready', 'in_progress', 'in_review', 'done', 'cancelled'] }).notNull().default('blocked'),
   scope_analysis: text('scope_analysis'),
@@ -90,7 +100,6 @@ export const epics = sqliteTable('epics', {
   updated_at: integer('updated_at').notNull().default(sql`(unixepoch())`),
 }, (table) => [
   index('idx_epics_project').on(table.project_id),
-  index('idx_epics_bead').on(table.bead_epic_id),
 ])
 
 // ─── Sessions ────────────────────────────────────────────────────────────────
@@ -105,9 +114,13 @@ export const sessions = sqliteTable('sessions', {
   agent_mail_name: text('agent_mail_name'),
   model: text('model').notNull().default('sonnet'),
   status: text('status', {
-    enum: ['queued', 'running', 'waiting_input', 'validation_failed', 'completed', 'failed', 'cancelled', 'detached'],
+    enum: ['queued', 'running', 'waiting_input', 'idle', 'validation_failed', 'completed', 'failed', 'cancelled', 'detached'],
   }).notNull().default('queued'),
+  permission_mode: text('permission_mode', {
+    enum: ['default', 'plan', 'acceptEdits', 'bypassPermissions'],
+  }).notNull().default('default'),
   prompt: text('prompt').notNull(),
+  target_dir: text('target_dir'),
   pid: integer('pid'),
   exit_code: integer('exit_code'),
   pr_url: text('pr_url'),
@@ -226,4 +239,18 @@ export const activityLog = sqliteTable('activity_log', {
   created_at: integer('created_at').notNull().default(sql`(unixepoch())`),
 }, (table) => [
   index('idx_activity_project').on(table.project_id, table.created_at),
+])
+
+// ─── Session Audit Log ──────────────────────────────────────────────────────
+
+export const sessionAuditLog = sqliteTable('session_audit_log', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  session_id: text('session_id').notNull().references(() => sessions.id),
+  tool_name: text('tool_name').notNull(),
+  tool_input_summary: text('tool_input_summary'),
+  policy_result: text('policy_result', { enum: ['allow', 'ask', 'block'] }).notNull(),
+  user_decision: text('user_decision'),
+  created_at: integer('created_at').notNull().default(sql`(unixepoch())`),
+}, (table) => [
+  index('idx_audit_session').on(table.session_id, table.created_at),
 ])

@@ -79,26 +79,15 @@ export function TriageDialog({ captures, open, onOpenChange, onTriaged }: Triage
   }, [session?.status, phase, eventsData?.events])
 
   const handleStartTriage = useCallback(() => {
-    const captureTexts = captures
-      .map((c, i) => `Capture ${i + 1}: "${c.text}"`)
-      .join('\n')
-
-    const prompt = `Triage the following captures into an Epic with Beads breakdown. Analyze each capture, determine the scope, and create a structured Epic.
-
-${captureTexts}
-
-For each capture:
-1. Analyze what change is being requested
-2. Determine priority (P0-P3) and type (feature/bug/task)
-3. Create an Epic title and description
-4. Break down into Beads (sub-tasks)
-5. Suggest labels
-
-Output a summary of the Epic and Beads you would create.`
+    const captureIds = captures.map((c) => c.id).join(',')
+    const prompt = [
+      `Read the skill file at .claude/skills/triage/SKILL.md and follow its instructions exactly.`,
+      `Triage these captures: ${captureIds}`,
+    ].join('\n\n')
 
     setPhase('processing')
     createSession.mutate(
-      { prompt, model: 'sonnet', name: `Triage: ${captures.length} capture(s)` },
+      { prompt, model: 'opus', name: `Triage: ${captures.length} capture(s)` },
       {
         onSuccess: (data) => {
           setSessionId(data.session.id)

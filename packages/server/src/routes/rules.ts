@@ -295,10 +295,17 @@ router.post('/:ruleId/export', requireRole('pm', 'techlead'), (req, res) => {
       .slice(0, 60)
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
-      || `rule-${ruleId.slice(-6)}`
+      .replace(/^-+|-+$/g, '')
+      || `rule-${ruleId.replace('rule_', '')}`
 
     const configService = new ClaudeConfigService(project.project_root)
+
+    // Check for existing file to prevent silent overwrite
+    const existing = configService.getRule(slug)
+    if (existing) {
+      res.status(409).json({ error: `Rule file already exists at .claude/rules/${slug}.md`, slug })
+      return
+    }
 
     // Build rule content
     const content = `# ${rule.category}: ${rule.rule_text.slice(0, 80)}\n\n${rule.rule_text}\n\n<!-- Exported from knowledge rule ${ruleId} (maturity: ${rule.maturity}, confidence: ${rule.confidence}) -->\n`

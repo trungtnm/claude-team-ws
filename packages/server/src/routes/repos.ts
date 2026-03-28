@@ -35,9 +35,27 @@ router.get('/', (req, res) => {
   }
 })
 
+/** Validate git URL to prevent SSRF — only HTTPS on allowed hosts */
+function isAllowedGitUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    // Must be HTTPS (block file://, http://, ssh://, etc.)
+    if (parsed.protocol !== 'https:') return false
+    // Block private/internal IPs
+    const hostname = parsed.hostname
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return false
+    if (hostname.startsWith('10.') || hostname.startsWith('192.168.')) return false
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(hostname)) return false
+    if (hostname === '169.254.169.254') return false // Cloud metadata
+    return true
+  } catch {
+    return false
+  }
+}
+
 const addRepoSchema = z.object({
   name: z.string().min(1).max(200),
-  git_url: z.string().url().optional(),
+  git_url: z.string().url().refine(isAllowedGitUrl, { message: 'git_url must be HTTPS and not target internal/private addresses' }).optional(),
   source_path: z.string().min(1).optional(),
   default_branch: z.string().min(1).optional(),
   mode: z.enum(['clone', 'link']).optional(),
@@ -90,8 +108,8 @@ router.post('/', requireRole('pm', 'techlead'), async (req, res) => {
     const repo = db.select().from(repos).where(eq(repos.id, id)).get()
 
     // If clone mode with git_url, start cloning in background
-    if (mode === 'clone' && git_url) {
-      gitService.clone(git_url, path, default_branch).then(() => {
+    if (requestMode === 'clone' && git_url) {
+      gitService.clone(git_url, repoPath, default_branch).then(() => {
         db.update(repos).set({ status: 'ready' }).where(eq(repos.id, id)).run()
         emitToProject(projectId, 'repo:updated', { ...repo, status: 'ready' })
       }).catch((cloneErr) => {

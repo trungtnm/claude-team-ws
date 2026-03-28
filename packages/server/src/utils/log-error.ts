@@ -1,11 +1,12 @@
 /**
- * Log caught errors to stderr in non-production environments.
- * Call this inside every route catch block so errors appear in the terminal.
+ * Log caught errors to stderr and return a safe message for the client.
+ * In production, internal details are hidden; in dev, the real message is returned.
  */
 export function logError(context: string, err: unknown): string {
   const message = err instanceof Error ? err.message : String(err)
-  if (process.env.NODE_ENV !== 'production') {
-    console.error(`[ERROR] ${context}:`, err instanceof Error ? err.stack : err)
+  console.error(`[ERROR] ${context}:`, err instanceof Error ? err.stack : err)
+  if (process.env.NODE_ENV === 'production') {
+    return 'An internal error occurred'
   }
   return message
 }

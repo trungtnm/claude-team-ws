@@ -203,7 +203,7 @@ describe('Sessions Routes', () => {
 
   describe('GET /api/projects/:projectId/sessions/:sessionId', () => {
     it('returns session detail', async () => {
-      const session = { id: 's1', project_id: 'proj_1', status: 'running' }
+      const session = { id: 's1', project_id: 'proj_1', status: 'running', user_id: 'user_pm' }
       mockGet.mockReturnValue(session)
 
       const app = createApp()
@@ -225,7 +225,7 @@ describe('Sessions Routes', () => {
 
   describe('POST /api/projects/:projectId/sessions/:sessionId/cancel', () => {
     it('cancels a running session', async () => {
-      const session = { id: 's1', project_id: 'proj_1', status: 'running' }
+      const session = { id: 's1', project_id: 'proj_1', status: 'running', user_id: 'user_pm' }
       const cancelled = { ...session, status: 'cancelled' }
       mockGet.mockReturnValueOnce(session).mockReturnValueOnce(cancelled)
 
@@ -239,7 +239,7 @@ describe('Sessions Routes', () => {
     })
 
     it('can cancel a queued session', async () => {
-      const session = { id: 's1', project_id: 'proj_1', status: 'queued' }
+      const session = { id: 's1', project_id: 'proj_1', status: 'queued', user_id: 'user_pm' }
       const cancelled = { ...session, status: 'cancelled' }
       mockGet.mockReturnValueOnce(session).mockReturnValueOnce(cancelled)
 
@@ -250,7 +250,7 @@ describe('Sessions Routes', () => {
     })
 
     it('can cancel a waiting_input session', async () => {
-      const session = { id: 's1', project_id: 'proj_1', status: 'waiting_input' }
+      const session = { id: 's1', project_id: 'proj_1', status: 'waiting_input', user_id: 'user_pm' }
       const cancelled = { ...session, status: 'cancelled' }
       mockGet.mockReturnValueOnce(session).mockReturnValueOnce(cancelled)
 
@@ -261,7 +261,7 @@ describe('Sessions Routes', () => {
     })
 
     it('returns 400 for completed session', async () => {
-      const session = { id: 's1', project_id: 'proj_1', status: 'completed' }
+      const session = { id: 's1', project_id: 'proj_1', status: 'completed', user_id: 'user_pm' }
       mockGet.mockReturnValue(session)
 
       const app = createApp()
@@ -283,7 +283,7 @@ describe('Sessions Routes', () => {
 
   describe('POST /api/projects/:projectId/sessions/:sessionId/resume', () => {
     it('resumes a failed session', async () => {
-      const session = { id: 's1', project_id: 'proj_1', status: 'failed' }
+      const session = { id: 's1', project_id: 'proj_1', status: 'failed', user_id: 'user_pm' }
       const resumed = { ...session, status: 'queued' }
       mockGet.mockReturnValueOnce(session).mockReturnValueOnce(resumed)
 
@@ -295,7 +295,7 @@ describe('Sessions Routes', () => {
     })
 
     it('resumes a cancelled session', async () => {
-      const session = { id: 's1', project_id: 'proj_1', status: 'cancelled' }
+      const session = { id: 's1', project_id: 'proj_1', status: 'cancelled', user_id: 'user_pm' }
       const resumed = { ...session, status: 'queued' }
       mockGet.mockReturnValueOnce(session).mockReturnValueOnce(resumed)
 
@@ -306,7 +306,7 @@ describe('Sessions Routes', () => {
     })
 
     it('returns 400 for running session', async () => {
-      const session = { id: 's1', project_id: 'proj_1', status: 'running' }
+      const session = { id: 's1', project_id: 'proj_1', status: 'running', user_id: 'user_pm' }
       mockGet.mockReturnValue(session)
 
       const app = createApp()
@@ -319,7 +319,7 @@ describe('Sessions Routes', () => {
 
   describe('POST /api/projects/:projectId/sessions/:sessionId/answer', () => {
     it('sends answer to waiting session', async () => {
-      const session = { id: 's1', project_id: 'proj_1', status: 'waiting_input' }
+      const session = { id: 's1', project_id: 'proj_1', status: 'waiting_input', user_id: 'user_pm' }
       mockGet.mockReturnValue(session)
 
       const app = createApp()
@@ -336,7 +336,7 @@ describe('Sessions Routes', () => {
     })
 
     it('returns 400 when session is not waiting for input', async () => {
-      const session = { id: 's1', project_id: 'proj_1', status: 'running' }
+      const session = { id: 's1', project_id: 'proj_1', status: 'running', user_id: 'user_pm' }
       mockGet.mockReturnValue(session)
 
       const app = createApp()

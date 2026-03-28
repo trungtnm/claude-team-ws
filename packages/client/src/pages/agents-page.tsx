@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Bot, Plus, Search, Maximize2, X, PanelLeftOpen,
-  Loader2,
+  Loader2, CheckCircle,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -13,7 +13,7 @@ import { SessionStatsBar } from '@/components/agents/session-stats-bar'
 import { SessionInput } from '@/components/agents/session-input'
 import { PermissionModeBar } from '@/components/agents/permission-mode-bar'
 import { NewSessionDialog } from '@/components/agents/new-session-dialog'
-import { useSessionsQuery, useCancelSessionMutation, useSessionRoom, isActiveSession } from '@/hooks/use-sessions'
+import { useSessionsQuery, useCancelSessionMutation, useInterruptSessionMutation, useCompleteSessionMutation, useDeleteSessionMutation, useBulkDeleteSessionsMutation, useSessionRoom, isActiveSession } from '@/hooks/use-sessions'
 import { cn } from '@/lib/utils'
 import type { AgentSession } from '@/types'
 
@@ -58,23 +58,30 @@ export default function AgentsPage() {
 
   const { data: allSessions = [], isLoading, error } = useSessionsQuery()
   const cancelMutation = useCancelSessionMutation()
+  const interruptMutation = useInterruptSessionMutation()
+  const completeMutation = useCompleteSessionMutation()
+  const deleteMutation = useDeleteSessionMutation()
+  const bulkDeleteMutation = useBulkDeleteSessionsMutation()
 
   // Join Socket.IO room for the selected session to get real-time events
   useSessionRoom(selectedSessionId ?? undefined)
 
   const running = useMemo(() => allSessions.filter((s) => s.status === 'running'), [allSessions])
   const waiting = useMemo(() => allSessions.filter((s) => s.status === 'waiting_input'), [allSessions])
-  const idle = useMemo(() => allSessions.filter((s) => s.status === 'queued'), [allSessions])
+  const idleSessions = useMemo(() => allSessions.filter((s) => s.status === 'idle'), [allSessions])
+  const queued = useMemo(() => allSessions.filter((s) => s.status === 'queued'), [allSessions])
   const completed = useMemo(() => allSessions.filter((s) => s.status === 'completed'), [allSessions])
   const failed = useMemo(() => allSessions.filter((s) => s.status === 'failed' || s.status === 'cancelled'), [allSessions])
+
+  const activeSessions = useMemo(() => [...running, ...waiting, ...idleSessions, ...queued], [running, waiting, idleSessions, queued])
 
   // Auto-select first active session if none selected
   useEffect(() => {
     if (!selectedSessionId) {
-      const firstActive = [...waiting, ...running, ...idle][0]
+      const firstActive = activeSessions[0]
       if (firstActive) setSelectedSessionId(firstActive.id)
     }
-  }, [selectedSessionId, waiting, running, idle])
+  }, [selectedSessionId, activeSessions])
 
   const filteredSessions = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
@@ -85,16 +92,16 @@ export default function AgentsPage() {
 
     switch (activeTab) {
       case 'active':
-        return [...running, ...waiting, ...idle].filter(match)
+        return activeSessions.filter(match)
       case 'history':
         return [...completed, ...failed].filter(match)
     }
-  }, [searchQuery, activeTab, running, waiting, idle, completed, failed])
+  }, [searchQuery, activeTab, activeSessions, completed, failed])
 
   const selectedSession = allSessions.find((s) => s.id === selectedSessionId)
 
   const tabs: { id: FilterTab; label: string; count: number; dot?: string }[] = [
-    { id: 'active', label: 'Active', count: running.length + waiting.length + idle.length, dot: 'bg-green-400' },
+    { id: 'active', label: 'Active', count: activeSessions.length, dot: 'bg-green-400' },
     { id: 'history', label: 'History', count: completed.length + failed.length },
   ]
 
@@ -127,7 +134,7 @@ export default function AgentsPage() {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-green-400" />
               </span>
-              {running.length + waiting.length + idle.length} active
+              {activeSessions.length} active
             </span>
             <span className="text-ink-disabled">· max 3 concurrent</span>
           </div>
@@ -168,9 +175,9 @@ export default function AgentsPage() {
             ))}
           </div>
 
-          {/* Search */}
-          <div className="px-2 py-2">
-            <div className="relative">
+          {/* Search + Clear All */}
+          <div className="px-2 py-2 flex items-center gap-1.5">
+            <div className="relative flex-1">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-muted" />
               <Input
                 placeholder="Filter sessions..."
@@ -179,6 +186,17 @@ export default function AgentsPage() {
                 className="h-8 pl-8 text-xs"
               />
             </div>
+            {activeTab === 'history' && (completed.length + failed.length) > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-[10px] text-ink-disabled hover:text-error shrink-0"
+                disabled={bulkDeleteMutation.isPending}
+                onClick={() => bulkDeleteMutation.mutate()}
+              >
+                Clear All
+              </Button>
+            )}
           </div>
 
           {/* Session list */}
@@ -202,6 +220,10 @@ export default function AgentsPage() {
                         setSelectedSessionId(session.id)
                         setSidebarOpen(false)
                       }}
+                      onDelete={activeTab === 'history' ? () => {
+                        deleteMutation.mutate(session.id)
+                        if (selectedSessionId === session.id) setSelectedSessionId(null)
+                      } : undefined}
                     />
                   ))}
                 </div>
@@ -250,6 +272,18 @@ export default function AgentsPage() {
                       <Maximize2 className="h-3 w-3" />
                       Full View
                     </Button>
+                    {selectedSession.status === 'idle' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs gap-1"
+                        disabled={completeMutation.isPending}
+                        onClick={() => completeMutation.mutate(selectedSession.id)}
+                      >
+                        <CheckCircle className="h-3 w-3" />
+                        Complete
+                      </Button>
+                    )}
                     {selectedSession.status === 'queued' && (
                       <Button
                         variant="outline"
@@ -265,11 +299,13 @@ export default function AgentsPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="text-xs text-error hover:text-error"
-                        disabled={cancelMutation.isPending}
-                        onClick={() => cancelMutation.mutate(selectedSession.id)}
+                        className="text-xs text-amber-500 hover:text-amber-400 gap-1"
+                        disabled={interruptMutation.isPending}
+                        onClick={() => interruptMutation.mutate(selectedSession.id)}
+                        title="Interrupt current turn — session stays resumable"
                       >
                         <X className="h-3 w-3" />
+                        Interrupt
                       </Button>
                     )}
                   </div>
@@ -278,7 +314,7 @@ export default function AgentsPage() {
                 {/* Permission mode bar */}
                 {isActiveSession(selectedSession) && (
                   <div className="mt-2">
-                    <PermissionModeBar sessionId={selectedSession.id} currentMode="bypassPermissions" />
+                    <PermissionModeBar sessionId={selectedSession.id} currentMode={selectedSession.permissionMode ?? 'default'} />
                   </div>
                 )}
               </div>
@@ -293,7 +329,7 @@ export default function AgentsPage() {
                 <SessionStatsBar session={selectedSession} />
                 <SessionInput
                   session={selectedSession}
-                  onCancel={() => cancelMutation.mutate(selectedSession.id)}
+                  onCancel={() => interruptMutation.mutate(selectedSession.id)}
                 />
               </div>
             </>
@@ -333,10 +369,12 @@ function SessionListItem({
   session,
   selected,
   onClick,
+  onDelete,
 }: {
   session: AgentSession
   selected: boolean
   onClick: () => void
+  onDelete?: () => void
 }) {
   const config = statusConfig[session.status] ?? statusConfig.cancelled
   const active = isActiveSession(session)
@@ -374,10 +412,10 @@ function SessionListItem({
       {/* Model + epic reference */}
       <div className="mt-1 flex items-center gap-2 text-[10px] text-ink-disabled">
         <span>{session.model}</span>
-        {session.epic?.bead?.title && (
+        {session.epic?.title && (
           <>
             <span>·</span>
-            <span className="truncate">{session.epic.bead.title}</span>
+            <span className="truncate">{session.epic.title}</span>
           </>
         )}
       </div>
@@ -393,6 +431,16 @@ function SessionListItem({
           <span>{formatDuration(session.finishedAt - session.startedAt)}</span>
         ) : (
           <span>Created {new Date(session.createdAt * 1000).toLocaleTimeString()}</span>
+        )}
+        {onDelete && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onDelete() }}
+            className="ml-auto text-ink-disabled hover:text-error transition-colors cursor-pointer"
+            title="Delete session"
+          >
+            <X className="h-3 w-3" />
+          </button>
         )}
       </div>
     </button>

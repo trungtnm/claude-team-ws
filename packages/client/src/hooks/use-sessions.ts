@@ -5,7 +5,7 @@ import { queryKeys } from '@/lib/query-keys'
 import { sessionsApi } from '@/lib/resources'
 import { joinSession, leaveSession } from '@/lib/socket'
 import { useProject } from '@/providers/project-provider'
-import type { AgentSession, SessionEvent } from '@/types'
+import type { AgentSession, SessionEvent, Attachment } from '@/types'
 
 // ── Queries ───────────────────────────────────────────────────────────────
 
@@ -56,17 +56,40 @@ export function useSessionEventsQuery(
 
 // ── Mutations ─────────────────────────────────────────────────────────────
 
+export function useCapabilitiesQuery() {
+  const { projectId } = useProject()
+  return useQuery({
+    queryKey: queryKeys.sessions.capabilities(projectId),
+    queryFn: async () => {
+      const { capabilities } = await sessionsApi.capabilities(projectId)
+      return capabilities
+    },
+    enabled: !!projectId,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+  })
+}
+
 export function useCreateSessionMutation() {
   const queryClient = useQueryClient()
   const { projectId } = useProject()
 
   return useMutation({
-    mutationFn: (data: { prompt: string; model?: string; name?: string; epicId?: string }) =>
+    mutationFn: (data: {
+      prompt: string
+      model?: string
+      name?: string
+      epicId?: string
+      permission_mode?: string
+      target_dir?: string
+    }) =>
       sessionsApi.create(projectId, {
         epicId: data.epicId,
         model: data.model,
         name: data.name,
         prompt: data.prompt,
+        permission_mode: data.permission_mode,
+        target_dir: data.target_dir,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all(projectId) })
@@ -127,6 +150,22 @@ export function useAnswerSessionMutation() {
   })
 }
 
+export function useInterruptSessionMutation() {
+  const queryClient = useQueryClient()
+  const { projectId } = useProject()
+
+  return useMutation({
+    mutationFn: (sessionId: string) => sessionsApi.interrupt(projectId, sessionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all(projectId) })
+      toast.success('Agent interrupted — session idle')
+    },
+    onError: (err) => {
+      toast.error(`Failed to interrupt: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    },
+  })
+}
+
 export function useCompleteSessionMutation() {
   const queryClient = useQueryClient()
   const { projectId } = useProject()
@@ -142,13 +181,49 @@ export function useCompleteSessionMutation() {
   })
 }
 
+export function useDeleteSessionMutation() {
+  const queryClient = useQueryClient()
+  const { projectId } = useProject()
+
+  return useMutation({
+    mutationFn: (sessionId: string) => sessionsApi.delete(projectId, sessionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all(projectId) })
+      toast.success('Session deleted')
+    },
+    onError: (err) => {
+      toast.error(`Failed to delete session: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    },
+  })
+}
+
+export function useBulkDeleteSessionsMutation() {
+  const queryClient = useQueryClient()
+  const { projectId } = useProject()
+
+  return useMutation({
+    mutationFn: () => sessionsApi.bulkDelete(projectId),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all(projectId) })
+      toast.success(`Cleared ${(data as { deleted: number }).deleted} sessions`)
+    },
+    onError: (err) => {
+      toast.error(`Failed to clear sessions: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    },
+  })
+}
+
 export function useSendMessageMutation() {
   const queryClient = useQueryClient()
   const { projectId } = useProject()
 
   return useMutation({
-    mutationFn: ({ sessionId, message }: { sessionId: string; message: string }) =>
-      sessionsApi.sendMessage(projectId, sessionId, { message }),
+    mutationFn: ({ sessionId, message, attachments }: {
+      sessionId: string
+      message: string
+      attachments?: Attachment[]
+    }) =>
+      sessionsApi.sendMessage(projectId, sessionId, { message, attachments }),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.detail(variables.sessionId) })
     },
@@ -189,7 +264,7 @@ export function useSessionRoom(sessionId: string | undefined): void {
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-const ACTIVE_STATUSES = new Set(['queued', 'running', 'waiting_input'])
+const ACTIVE_STATUSES = new Set(['queued', 'running', 'waiting_input', 'idle'])
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
 
 export function isActiveSession(session: AgentSession): boolean {
@@ -218,6 +293,7 @@ export function parseSessionEvent(event: SessionEvent): ParsedStreamEvent {
     timestamp: event.createdAt,
     attachments: data.attachments as ParsedStreamEvent['attachments'],
     questionData: data.questionData as ParsedStreamEvent['questionData'],
+    contextWindow: data.contextWindow as ParsedStreamEvent['contextWindow'],
   }
 }
 
@@ -234,5 +310,15 @@ export interface ParsedStreamEvent {
     text: string
     options: string[]
     context: string
+  }
+  contextWindow?: {
+    contextWindowSize: number
+    usedPercentage: number
+    currentUsage: {
+      inputTokens: number
+      outputTokens: number
+      cacheCreationInputTokens: number
+      cacheReadInputTokens: number
+    } | null
   }
 }

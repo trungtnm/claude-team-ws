@@ -1,17 +1,21 @@
-import { Settings2, GitBranch, Users, BookOpen, Webhook } from 'lucide-react'
+import { Settings2, GitBranch, Users, BookOpen, Webhook, Shield, FileCode2 } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { ProjectTab } from '@/components/settings/project-tab'
 import { ReposTab } from '@/components/settings/repos-tab'
 import { UsersTab } from '@/components/settings/users-tab'
 import { RulesTab } from '@/components/settings/rules-tab'
 import { WebhooksTab } from '@/components/settings/webhooks-tab'
+import { SafetyTab } from '@/components/settings/safety-tab'
+import { ClaudeConfigTab } from '@/components/settings/claude-config-tab'
 
 const tabs = [
   { value: 'project', label: 'Project', icon: Settings2 },
   { value: 'repos', label: 'Repositories', icon: GitBranch },
   { value: 'users', label: 'Users', icon: Users },
+  { value: 'claude-config', label: 'Claude Config', icon: FileCode2 },
   { value: 'rules', label: 'Rules', icon: BookOpen },
   { value: 'webhooks', label: 'Webhooks', icon: Webhook },
+  { value: 'safety', label: 'Safety', icon: Shield },
 ] as const
 
 export default function SettingsPage() {
@@ -42,11 +46,17 @@ export default function SettingsPage() {
           <TabsContent value="users">
             <UsersTab />
           </TabsContent>
+          <TabsContent value="claude-config">
+            <ClaudeConfigTab />
+          </TabsContent>
           <TabsContent value="rules">
             <RulesTab />
           </TabsContent>
           <TabsContent value="webhooks">
             <WebhooksTab />
+          </TabsContent>
+          <TabsContent value="safety">
+            <SafetyTab />
           </TabsContent>
         </div>
       </Tabs>

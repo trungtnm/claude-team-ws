@@ -204,10 +204,10 @@ describe('Activity route (integration)', () => {
       const now = Math.floor(Date.now() / 1000)
 
       db.insert(epics).values([
-        { id: 'e1', project_id: 'proj_test', bead_epic_id: 'b1', ui_status: 'ready', created_at: now, updated_at: now },
-        { id: 'e2', project_id: 'proj_test', bead_epic_id: 'b2', ui_status: 'in_progress', created_at: now, updated_at: now },
-        { id: 'e3', project_id: 'proj_test', bead_epic_id: 'b3', ui_status: 'done', created_at: now, updated_at: now },
-        { id: 'e4', project_id: 'proj_test', bead_epic_id: 'b4', ui_status: 'blocked', created_at: now, updated_at: now },
+        { id: 'e1', project_id: 'proj_test', ui_status: 'ready', created_at: now, updated_at: now },
+        { id: 'e2', project_id: 'proj_test', ui_status: 'in_progress', created_at: now, updated_at: now },
+        { id: 'e3', project_id: 'proj_test', ui_status: 'done', created_at: now, updated_at: now },
+        { id: 'e4', project_id: 'proj_test', ui_status: 'blocked', created_at: now, updated_at: now },
       ]).run()
 
       const res = await request(app).get('/api/projects/proj_test/activity/metrics')

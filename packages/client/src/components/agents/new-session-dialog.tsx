@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
+import { Shield, Eye, ShieldCheck, ShieldOff } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -12,14 +13,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { RichInput } from './rich-input'
 import { cn } from '@/lib/utils'
-import { useCreateSessionMutation } from '@/hooks/use-sessions'
-
-interface Attachment {
-  type: 'image' | 'file'
-  name: string
-  mimeType: string
-  data: string
-}
+import { useCreateSessionMutation, useCapabilitiesQuery } from '@/hooks/use-sessions'
+import type { Attachment, PermissionMode } from '@/types'
 
 interface NewSessionDialogProps {
   open: boolean
@@ -33,25 +28,42 @@ const models = [
   { id: 'haiku', label: 'Haiku', description: 'Fastest' },
 ] as const
 
+const permissionModes: { id: PermissionMode; label: string; icon: React.ComponentType<{ className?: string }>; description: string }[] = [
+  { id: 'default', label: 'Default', icon: Shield, description: 'Prompts for each tool' },
+  { id: 'plan', label: 'Plan', icon: Eye, description: 'Read-only, no edits' },
+  { id: 'acceptEdits', label: 'Auto', icon: ShieldCheck, description: 'Auto-accept edits' },
+  { id: 'bypassPermissions', label: 'Bypass', icon: ShieldOff, description: 'Skip all checks' },
+]
+
 export function NewSessionDialog({ open, onOpenChange, onCreated }: NewSessionDialogProps) {
   const [sessionName, setSessionName] = useState('')
   const [prompt, setPrompt] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [model, setModel] = useState('sonnet')
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>('default')
+  const [targetDir, setTargetDir] = useState('')
 
   const createMutation = useCreateSessionMutation()
+  const { data: capabilities } = useCapabilitiesQuery()
 
   const handleSubmit = useCallback(() => {
     if (!prompt.trim() && attachments.length === 0) return
 
     createMutation.mutate(
-      { prompt: prompt.trim(), model, name: sessionName.trim() || undefined },
+      {
+        prompt: prompt.trim(),
+        model,
+        name: sessionName.trim() || undefined,
+        permission_mode: permissionMode,
+        target_dir: targetDir.trim() || undefined,
+      },
       {
         onSuccess: (data) => {
           toast.success('Session started')
           setSessionName('')
           setPrompt('')
           setAttachments([])
+          setPermissionMode('default')
           onOpenChange(false)
           onCreated?.(data.session.id)
         },
@@ -60,7 +72,7 @@ export function NewSessionDialog({ open, onOpenChange, onCreated }: NewSessionDi
         },
       },
     )
-  }, [prompt, attachments, model, sessionName, createMutation, onOpenChange, onCreated])
+  }, [prompt, attachments, model, sessionName, permissionMode, targetDir, createMutation, onOpenChange, onCreated])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -95,10 +107,21 @@ export function NewSessionDialog({ open, onOpenChange, onCreated }: NewSessionDi
               onSubmit={handleSubmit}
               placeholder="What should the agent do? (/ for commands, @ for agents)"
               autoFocus
-              capabilities={null}
+              capabilities={capabilities ?? null}
               minRows={3}
               maxHeight={200}
               showHint
+            />
+          </div>
+
+          {/* Target Directory (optional) */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-ink-secondary">Target Directory <span className="text-ink-disabled">(optional)</span></label>
+            <Input
+              value={targetDir}
+              onChange={(e) => setTargetDir(e.target.value)}
+              placeholder="Leave empty for project root"
+              className="text-sm font-mono"
             />
           </div>
 
@@ -125,6 +148,31 @@ export function NewSessionDialog({ open, onOpenChange, onCreated }: NewSessionDi
             </div>
           </div>
 
+          {/* Permission Mode */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-ink-secondary">Permission Mode</label>
+            <div className="flex gap-2">
+              {permissionModes.map((pm) => {
+                const Icon = pm.icon
+                return (
+                  <button
+                    key={pm.id}
+                    type="button"
+                    onClick={() => setPermissionMode(pm.id)}
+                    className={cn(
+                      'flex-1 rounded-[var(--radius-md)] border px-2 py-2 text-center text-sm transition-colors cursor-pointer',
+                      permissionMode === pm.id
+                        ? 'border-accent bg-accent-subtle text-ink'
+                        : 'border-edge text-ink-secondary hover:border-edge-hover',
+                    )}
+                  >
+                    <Icon className="mx-auto h-4 w-4 mb-0.5" />
+                    <div className="text-[11px] font-medium">{pm.label}</div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
         </div>
 
         <DialogFooter>

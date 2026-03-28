@@ -46,6 +46,11 @@ router.get('/', (req, res) => {
         project_root: projects.project_root,
         max_concurrent_agents: projects.max_concurrent_agents,
         ask_question_mode: projects.ask_question_mode,
+        safety_mode: projects.safety_mode,
+        command_policy: projects.command_policy,
+        max_session_input_tokens: projects.max_session_input_tokens,
+        max_session_output_tokens: projects.max_session_output_tokens,
+        max_session_tool_calls: projects.max_session_tool_calls,
         picture_url: projects.picture_url,
         created_at: projects.created_at,
         updated_at: projects.updated_at,
@@ -154,6 +159,16 @@ const updateProjectSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   max_concurrent_agents: z.number().int().min(1).max(20).optional(),
   ask_question_mode: z.enum(['pause', 'auto', 'hybrid']).optional(),
+  // Safety settings (techlead-only fields — enforced in handler)
+  safety_mode: z.enum(['a', 'b']).optional(),
+  command_policy: z.object({
+    hard_block_patterns: z.array(z.string()).optional(),
+    pause_ask_patterns: z.array(z.string()).optional(),
+    secret_file_patterns: z.array(z.string()).optional(),
+  }).nullable().optional(),
+  max_session_input_tokens: z.number().int().min(1000).nullable().optional(),
+  max_session_output_tokens: z.number().int().min(1000).nullable().optional(),
+  max_session_tool_calls: z.number().int().min(10).nullable().optional(),
 })
 
 // PATCH /:projectId — update project settings
@@ -182,11 +197,30 @@ router.patch('/:projectId', requireRole('pm', 'techlead'), (req, res) => {
       return
     }
 
+    // Safety fields require techlead role
+    const hasSafetyFields = parsed.data.safety_mode !== undefined
+      || parsed.data.command_policy !== undefined
+      || parsed.data.max_session_input_tokens !== undefined
+      || parsed.data.max_session_output_tokens !== undefined
+      || parsed.data.max_session_tool_calls !== undefined
+
+    if (hasSafetyFields && (user as { id: string; role?: string }).role !== 'techlead') {
+      res.status(403).json({ error: 'Only techleads can modify safety settings' })
+      return
+    }
+
     const now = Math.floor(Date.now() / 1000)
     const updates: Record<string, unknown> = { updated_at: now }
     if (parsed.data.name !== undefined) updates.name = parsed.data.name
     if (parsed.data.max_concurrent_agents !== undefined) updates.max_concurrent_agents = parsed.data.max_concurrent_agents
     if (parsed.data.ask_question_mode !== undefined) updates.ask_question_mode = parsed.data.ask_question_mode
+    if (parsed.data.safety_mode !== undefined) updates.safety_mode = parsed.data.safety_mode
+    if (parsed.data.command_policy !== undefined) {
+      updates.command_policy = parsed.data.command_policy ? JSON.stringify(parsed.data.command_policy) : null
+    }
+    if (parsed.data.max_session_input_tokens !== undefined) updates.max_session_input_tokens = parsed.data.max_session_input_tokens
+    if (parsed.data.max_session_output_tokens !== undefined) updates.max_session_output_tokens = parsed.data.max_session_output_tokens
+    if (parsed.data.max_session_tool_calls !== undefined) updates.max_session_tool_calls = parsed.data.max_session_tool_calls
 
     db.update(projects).set(updates).where(eq(projects.id, projectId)).run()
 

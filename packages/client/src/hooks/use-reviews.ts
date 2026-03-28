@@ -115,7 +115,7 @@ function transformApiResponse(
     title,
     branch,
     baseBranch,
-    epicTitle: session.epic?.bead?.title ?? 'Unknown Epic',
+    epicTitle: session.epic?.title ?? 'Unknown Epic',
     agentName: session.agentMailName ?? `Agent-${session.id.slice(0, 6)}`,
     files: pr ? transformFiles(pr, rawDiff) : rawDiff ? parsePrDiff(rawDiff) : [],
     aiReview: { ...defaultAiReview, securityWarnings: [] },

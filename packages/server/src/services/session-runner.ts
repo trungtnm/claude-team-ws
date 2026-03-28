@@ -1,10 +1,46 @@
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { eq, and } from 'drizzle-orm'
+import { writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync } from 'fs'
+import { join } from 'path'
+import { tmpdir, homedir } from 'os'
+import { nanoid } from 'nanoid'
 import { db } from '../db/index.js'
-import { sessions, sessionEvents, projects, activityLog, users } from '../db/schema.js'
+import { sessions, sessionEvents, projects, activityLog, users, notifications, sessionAuditLog } from '../db/schema.js'
 import { emitToProject, emitToSession, getIO } from './socket-manager.js'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
+
+export interface CapabilityItem {
+  name: string
+  description?: string
+}
+
+export interface SessionCapabilities {
+  commands: CapabilityItem[]
+  agents: CapabilityItem[]
+  skills: CapabilityItem[]
+  tools: string[]
+}
+
+export interface Attachment {
+  type: 'image' | 'file'
+  name: string
+  mimeType: string
+  /** base64-encoded data */
+  data: string
+}
+
+interface SessionLimits {
+  maxInputTokens: number
+  maxOutputTokens: number
+  maxToolCalls: number
+}
+
+const DEFAULT_LIMITS: SessionLimits = {
+  maxInputTokens: 500_000,
+  maxOutputTokens: 100_000,
+  maxToolCalls: 200,
+}
 
 interface ManagedSession {
   sessionId: string
@@ -13,7 +49,26 @@ interface ManagedSession {
   claudeSessionId: string | null
   pendingAnswer: ((answer: string) => void) | null
   eventCounter: number
+  permissionMode: string
+  targetDir: string
+  /** Cached command policy (loaded once at session start) */
+  commandPolicy: CommandPolicy
+  /** Token usage tracking */
+  inputTokens: number
+  outputTokens: number
+  toolCallCount: number
+  toolCallTimestamps: number[]
+  limits: SessionLimits
+  /** Flags to avoid spamming warnings */
+  inputWarned: boolean
+  outputWarned: boolean
+  toolCountWarned: boolean
+  rateWarned: boolean
 }
+
+// Temp directory for saving attached files so the agent can Read them
+const ATTACHMENTS_DIR = join(tmpdir(), 'ctw-attachments')
+if (!existsSync(ATTACHMENTS_DIR)) mkdirSync(ATTACHMENTS_DIR, { recursive: true })
 
 // ─── Session Runner ────────────────────────────────────────────────────────
 
@@ -23,10 +78,139 @@ const MODEL_MAP: Record<string, string> = {
   haiku: 'claude-haiku-4-5-20251001',
 }
 
+const PERMISSION_MODE_MAP: Record<string, string> = {
+  default: 'default',
+  plan: 'plan',
+  acceptEdits: 'acceptEdits',
+  bypassPermissions: 'bypassPermissions',
+}
+
+// ─── Command Policy Engine ──────────────────────────────────────────────────
+
+interface CommandPolicy {
+  hard_block_patterns: string[]
+  pause_ask_patterns: string[]
+  secret_file_patterns: string[]
+}
+
+const DEFAULT_POLICY: CommandPolicy = {
+  hard_block_patterns: [
+    'rm -rf /',
+    'rm -rf ~',
+    'rm -rf $HOME',
+    'sudo ',
+    'curl|bash',
+    'curl|sh',
+    'wget|bash',
+    'wget|sh',
+    'git push --force main',
+    'git push --force master',
+    'git push --force production',
+    'git push -f main',
+    'git push -f master',
+    'shutdown',
+    'reboot',
+    'kill -9 1',
+    'docker run --privileged',
+    'npm publish',
+    'docker push',
+  ],
+  pause_ask_patterns: [
+    'rm -rf',
+    'rm -r ',
+    'git push',
+    'git reset --hard',
+    'git checkout .',
+    'git clean',
+  ],
+  secret_file_patterns: [
+    '.env',
+    '*.pem',
+    '*.key',
+    '.ssh/',
+    '.aws/',
+    '.config/gcloud/',
+    '/proc/self/environ',
+    'id_rsa',
+    'id_ed25519',
+    'credentials.json',
+  ],
+}
+
+type PolicyResult = 'allow' | 'block' | 'ask'
+
+function evaluateCommandPolicy(command: string, policy: CommandPolicy): PolicyResult {
+  const normalized = command.toLowerCase().trim()
+
+  // Check hard-block patterns first
+  for (const pattern of policy.hard_block_patterns) {
+    if (normalized.includes(pattern.toLowerCase())) return 'block'
+  }
+
+  // Check pause-ask patterns
+  for (const pattern of policy.pause_ask_patterns) {
+    if (normalized.includes(pattern.toLowerCase())) return 'ask'
+  }
+
+  return 'allow'
+}
+
+function evaluateFilePolicy(filePath: string, policy: CommandPolicy): PolicyResult {
+  const normalized = filePath.toLowerCase()
+
+  for (const pattern of policy.secret_file_patterns) {
+    const p = pattern.toLowerCase()
+    if (p.startsWith('*')) {
+      // Wildcard suffix match
+      if (normalized.endsWith(p.slice(1))) return 'block'
+    } else if (p.endsWith('/')) {
+      // Directory prefix match
+      if (normalized.includes(p)) return 'block'
+    } else {
+      // Exact or contains match
+      if (normalized.includes(p)) return 'block'
+    }
+  }
+
+  return 'allow'
+}
+
+function loadSessionLimits(projectId: string): SessionLimits {
+  const project = db.select({
+    max_session_input_tokens: projects.max_session_input_tokens,
+    max_session_output_tokens: projects.max_session_output_tokens,
+    max_session_tool_calls: projects.max_session_tool_calls,
+  }).from(projects).where(eq(projects.id, projectId)).get()
+
+  return {
+    maxInputTokens: project?.max_session_input_tokens ?? DEFAULT_LIMITS.maxInputTokens,
+    maxOutputTokens: project?.max_session_output_tokens ?? DEFAULT_LIMITS.maxOutputTokens,
+    maxToolCalls: project?.max_session_tool_calls ?? DEFAULT_LIMITS.maxToolCalls,
+  }
+}
+
+function loadProjectPolicy(projectId: string): CommandPolicy {
+  const project = db.select({ command_policy: projects.command_policy }).from(projects).where(eq(projects.id, projectId)).get()
+  if (project?.command_policy) {
+    try {
+      const custom = JSON.parse(project.command_policy) as Partial<CommandPolicy>
+      return {
+        hard_block_patterns: custom.hard_block_patterns ?? DEFAULT_POLICY.hard_block_patterns,
+        pause_ask_patterns: custom.pause_ask_patterns ?? DEFAULT_POLICY.pause_ask_patterns,
+        secret_file_patterns: custom.secret_file_patterns ?? DEFAULT_POLICY.secret_file_patterns,
+      }
+    } catch {
+      return DEFAULT_POLICY
+    }
+  }
+  return DEFAULT_POLICY
+}
+
 class SessionRunner {
   private managed = new Map<string, ManagedSession>()
   private pollInterval: ReturnType<typeof setInterval> | null = null
   private projectRoot: string
+  private lastCapabilities: SessionCapabilities | null = null
 
   constructor(projectRoot: string) {
     this.projectRoot = projectRoot
@@ -83,6 +267,11 @@ class SessionRunner {
     return this.managed.get(sessionId)
   }
 
+  /** Get last-known capabilities from any session's system.init */
+  getCapabilities(): SessionCapabilities | null {
+    return this.lastCapabilities
+  }
+
   // ─── Queue Processing ─────────────────────────────────────────────────
 
   private processQueue(): void {
@@ -124,13 +313,26 @@ class SessionRunner {
     if (this.managed.has(session.id)) return
 
     const abortController = new AbortController()
+    const targetDir = session.target_dir || this.projectRoot
     const managed: ManagedSession = {
       sessionId: session.id,
       projectId: session.project_id,
       abortController,
-      claudeSessionId: null,
+      claudeSessionId: session.claude_session_id ?? null,
       pendingAnswer: null,
       eventCounter: 0,
+      permissionMode: session.permission_mode ?? 'default',
+      targetDir,
+      commandPolicy: loadProjectPolicy(session.project_id),
+      inputTokens: 0,
+      outputTokens: 0,
+      toolCallCount: 0,
+      toolCallTimestamps: [],
+      limits: loadSessionLimits(session.project_id),
+      inputWarned: false,
+      outputWarned: false,
+      toolCountWarned: false,
+      rateWarned: false,
     }
 
     this.managed.set(session.id, managed)
@@ -166,16 +368,22 @@ class SessionRunner {
     isResume: boolean,
     sessionEnv?: Record<string, string | undefined>,
   ): Promise<void> {
-    const { sessionId, abortController } = managed
+    const { sessionId, targetDir, permissionMode } = managed
+    // Capture the abort controller for this invocation — sendMessage() may replace it mid-flight
+    const myAbortController = managed.abortController
 
     const modelId = MODEL_MAP[model] ?? MODEL_MAP.sonnet
+    const resolvedMode = PERMISSION_MODE_MAP[permissionMode] ?? 'default'
 
     const options: Record<string, unknown> = {
       model: modelId,
-      cwd: this.projectRoot,
-      permissionMode: 'bypassPermissions',
-      abortController,
-      systemPrompt: 'claude_code',
+      cwd: targetDir,
+      additionalDirectories: [targetDir],
+      permissionMode: resolvedMode,
+      allowDangerouslySkipPermissions: resolvedMode === 'bypassPermissions',
+      abortController: myAbortController,
+      settingSources: ['user', 'project'],
+      systemPrompt: { type: 'preset', preset: 'claude_code' },
       canUseTool: this.makeCanUseTool(managed),
       ...(sessionEnv && { env: sessionEnv }),
     }
@@ -190,33 +398,30 @@ class SessionRunner {
         options: options as Parameters<typeof query>[0]['options'],
       })
 
+      // Enrich capabilities with descriptions from the SDK (runs in background)
+      if (!isResume) {
+        this.enrichCapabilities(agentQuery, managed).catch(() => { /* ignore */ })
+      }
+
       for await (const message of agentQuery) {
-        if (abortController.signal.aborted) break
+        if (myAbortController.signal.aborted) break
         this.handleMessage(managed, message)
       }
 
-      // Agent finished — mark as completed if still running
-      if (!abortController.signal.aborted) {
+      // Agent finished its turn → go idle (NOT completed)
+      if (!myAbortController.signal.aborted) {
         const current = db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
         if (current && (current.status === 'running' || current.status === 'waiting_input')) {
-          const now = Math.floor(Date.now() / 1000)
           db.update(sessions)
-            .set({ status: 'completed', finished_at: now })
+            .set({ status: 'idle' })
             .where(eq(sessions.id, sessionId))
             .run()
 
-          this.pushEvent(managed, 'system', { content: 'Session completed' })
+          this.pushEvent(managed, 'system', { content: 'Agent turn completed — session idle. Send a follow-up message or click Complete.' })
           emitToProject(managed.projectId, 'session:lifecycle', {
-            session: { ...current, status: 'completed', finished_at: now },
-            action: 'completed',
+            session: { ...current, status: 'idle' },
+            action: 'idle',
           })
-
-          db.insert(activityLog).values({
-            project_id: managed.projectId,
-            user_id: current.user_id,
-            action: 'session_completed',
-            details: JSON.stringify({ session_id: sessionId, name: current.name }),
-          }).run()
         }
       }
     } catch (err: unknown) {
@@ -227,7 +432,7 @@ class SessionRunner {
       console.error(`[SessionRunner] agent error for session ${sessionId}:`, err)
 
       const current = db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
-      if (current && current.status === 'running') {
+      if (current && (current.status === 'running' || current.status === 'waiting_input')) {
         const now = Math.floor(Date.now() / 1000)
         db.update(sessions)
           .set({ status: 'failed', finished_at: now })
@@ -246,9 +451,27 @@ class SessionRunner {
           action: 'session_failed',
           details: JSON.stringify({ session_id: sessionId, error: errStr.slice(0, 500) }),
         }).run()
+
+        // Notify session owner of failure
+        db.insert(notifications).values({
+          id: `notif_fail_${sessionId}_${Date.now()}`,
+          user_id: current.user_id,
+          project_id: managed.projectId,
+          type: 'agent_complete',
+          title: 'Agent session failed',
+          body: `Session "${current.name || current.prompt.slice(0, 50)}" failed: ${errStr.slice(0, 150)}`,
+          link: `/agents/${sessionId}`,
+        }).run()
       }
     } finally {
-      this.managed.delete(sessionId)
+      // Only clean up if this invocation's abort controller is still current.
+      // If sendMessage() replaced it, a new runAgent() is already running — don't interfere.
+      if (managed.abortController === myAbortController) {
+        const current = db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
+        if (current?.status !== 'idle') {
+          this.managed.delete(sessionId)
+        }
+      }
     }
   }
 
@@ -280,6 +503,22 @@ class SessionRunner {
           .where(eq(sessions.id, managed.sessionId))
           .run()
       }
+
+      // Extract capabilities from init message
+      const toItems = (arr: unknown[]) =>
+        (arr ?? []).filter((s): s is string => typeof s === 'string').map((name) => ({ name }))
+
+      const capabilities: SessionCapabilities = {
+        commands: toItems(message.slash_commands as unknown[]),
+        agents: toItems(message.agents as unknown[]),
+        skills: toItems(message.skills as unknown[]),
+        tools: ((message.tools as string[]) ?? []),
+      }
+      this.lastCapabilities = capabilities
+
+      this.pushEvent(managed, 'system', {
+        content: `Initialized. Model: ${(message.model as string) ?? 'unknown'}. Tools: ${capabilities.tools.length} available.`,
+      })
     }
   }
 
@@ -287,6 +526,53 @@ class SessionRunner {
     const msg = message.message as Record<string, unknown> | undefined
     const content = msg?.content as Array<Record<string, unknown>> | undefined
     if (!content) return
+
+    // Extract context window usage
+    const usage = msg?.usage as Record<string, number> | undefined
+    if (usage) {
+      const inputTokens = usage.input_tokens ?? 0
+      const cacheCreation = usage.cache_creation_input_tokens ?? 0
+      const cacheRead = usage.cache_read_input_tokens ?? 0
+      const outputTokens = usage.output_tokens ?? 0
+      const contextSize = 200000
+      const usedTokens = inputTokens + cacheCreation + cacheRead
+      const usedPercentage = Math.round((usedTokens / contextSize) * 100)
+
+      // Accumulate token usage for cost cap enforcement
+      managed.inputTokens += inputTokens + cacheCreation + cacheRead
+      managed.outputTokens += outputTokens
+
+      // Check cost caps
+      const { limits } = managed
+      const inputPct = (managed.inputTokens / limits.maxInputTokens) * 100
+      const outputPct = (managed.outputTokens / limits.maxOutputTokens) * 100
+
+      if (inputPct >= 100 || outputPct >= 100) {
+        this.pushEvent(managed, 'error', {
+          content: `⛔ Session stopped: token limit reached (input: ${Math.round(inputPct)}%, output: ${Math.round(outputPct)}%)`,
+        })
+        managed.abortController.abort()
+        return
+      }
+
+      if ((inputPct >= 80 && !managed.inputWarned) || (outputPct >= 80 && !managed.outputWarned)) {
+        this.pushEvent(managed, 'system', {
+          content: `⚠️ Token usage warning: input ${Math.round(inputPct)}% (${managed.inputTokens}/${limits.maxInputTokens}), output ${Math.round(outputPct)}% (${managed.outputTokens}/${limits.maxOutputTokens})`,
+        })
+        if (inputPct >= 80) managed.inputWarned = true
+        if (outputPct >= 80) managed.outputWarned = true
+      }
+
+      // Push a context window update event (frontend can extract this)
+      this.pushEvent(managed, 'system', {
+        content: `Context: ${usedPercentage}% used`,
+        contextWindow: {
+          contextWindowSize: contextSize,
+          usedPercentage,
+          currentUsage: { inputTokens, outputTokens, cacheCreationInputTokens: cacheCreation, cacheReadInputTokens: cacheRead },
+        },
+      })
+    }
 
     for (const block of content) {
       if (block.type === 'text') {
@@ -334,15 +620,22 @@ class SessionRunner {
   }
 
   private handleResultMessage(managed: ManagedSession, message: Record<string, unknown>): void {
-    const costUsd = message.cost_usd as number | undefined
-    const durationMs = message.duration_ms as number | undefined
-    const totalTurns = message.num_turns as number | undefined
+    const costUsd = message.total_cost_usd as number ?? message.cost_usd as number ?? 0
+    const durationMs = message.duration_ms as number ?? 0
+    const totalTurns = message.num_turns as number ?? 0
+    const usage = message.usage as Record<string, number> | undefined
+    const tokensUsed = usage
+      ? (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0)
+        + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
+      : 0
 
     this.pushEvent(managed, 'result', {
       content: JSON.stringify({
-        costUsd: costUsd ?? 0,
-        durationMs: durationMs ?? 0,
-        totalTurns: totalTurns ?? 0,
+        costUsd,
+        durationMs,
+        totalTurns,
+        tokensUsed,
+        subtype: message.subtype as string ?? 'success',
       }),
     })
   }
@@ -350,25 +643,239 @@ class SessionRunner {
   // ─── canUseTool callback helpers ──────────────────────────────────────
 
   private makeCanUseTool(managed: ManagedSession) {
+    const { commandPolicy } = managed
+
     return async (toolName: string, input: Record<string, unknown>) => {
       if (toolName === 'AskUserQuestion') {
         return this.handleAskUserQuestion(managed, input)
       }
 
-      // Auto-approve all other tools
+      // ── Tool call counting + rate limiting ──
+      const now = Date.now()
+      managed.toolCallCount++
+      managed.toolCallTimestamps.push(now)
+
+      // Sliding window: keep only last 60 seconds of timestamps
+      const oneMinuteAgo = now - 60_000
+      managed.toolCallTimestamps = managed.toolCallTimestamps.filter((t) => t > oneMinuteAgo)
+      const callsPerMinute = managed.toolCallTimestamps.length
+
+      // Tool count cap
+      if (managed.toolCallCount >= managed.limits.maxToolCalls) {
+        this.pushEvent(managed, 'error', {
+          content: `⛔ Session stopped: tool call limit reached (${managed.toolCallCount}/${managed.limits.maxToolCalls})`,
+        })
+        managed.abortController.abort()
+        return { behavior: 'allow' as const, updatedInput: input }
+      }
+
+      if (managed.toolCallCount >= managed.limits.maxToolCalls * 0.8 && !managed.toolCountWarned) {
+        managed.toolCountWarned = true
+        this.pushEvent(managed, 'system', {
+          content: `⚠️ Tool call warning: ${managed.toolCallCount}/${managed.limits.maxToolCalls} calls used`,
+        })
+      }
+
+      // Rate limit: >60 calls/min → auto-pause
+      if (callsPerMinute > 60) {
+        this.pushEvent(managed, 'system', {
+          content: `⚠️ Rate limit: ${callsPerMinute} tool calls/min. Session paused — send a message to continue.`,
+        })
+        db.update(sessions)
+          .set({ status: 'waiting_input' })
+          .where(eq(sessions.id, managed.sessionId))
+          .run()
+        emitToProject(managed.projectId, 'session:lifecycle', {
+          session: { id: managed.sessionId, status: 'waiting_input' },
+          action: 'rate_limited',
+        })
+        // Wait for user to continue
+        await new Promise<string>((resolve, reject) => {
+          managed.pendingAnswer = resolve
+          const onAbort = () => reject(new DOMException('Aborted', 'AbortError'))
+          managed.abortController.signal.addEventListener('abort', onAbort, { once: true })
+        })
+        managed.pendingAnswer = null
+        managed.toolCallTimestamps = [] // Reset rate window
+        db.update(sessions)
+          .set({ status: 'running' })
+          .where(eq(sessions.id, managed.sessionId))
+          .run()
+      } else if (callsPerMinute > 30 && !managed.rateWarned) {
+        managed.rateWarned = true
+        this.pushEvent(managed, 'system', {
+          content: `⚠️ High tool call rate: ${callsPerMinute}/min`,
+        })
+      }
+
+      // ── Bash command policy ──
+      if (toolName === 'Bash') {
+        const command = (input.command as string) ?? ''
+        const result = evaluateCommandPolicy(command, commandPolicy)
+
+        if (result === 'block') {
+          this.pushEvent(managed, 'system', {
+            content: `⛔ BLOCKED: ${command.slice(0, 100)}`,
+          })
+          this.logAudit(managed.sessionId, 'Bash', command.slice(0, 300), 'block')
+          return {
+            behavior: 'allow' as const,
+            updatedInput: { ...input, command: `echo "BLOCKED by safety policy: command not allowed"` },
+          }
+        }
+
+        if (result === 'ask') {
+          const approved = await this.askUserApproval(
+            managed,
+            `Agent wants to run: \`${command.slice(0, 200)}\``,
+            'This command requires approval per project safety policy.',
+          )
+          this.logAudit(managed.sessionId, 'Bash', command.slice(0, 300), 'ask', approved ? 'approved' : 'denied')
+          if (!approved) {
+            this.pushEvent(managed, 'system', {
+              content: `⚠️ DENIED by user: ${command.slice(0, 100)}`,
+            })
+            return {
+              behavior: 'allow' as const,
+              updatedInput: { ...input, command: `echo "DENIED by user: command not approved"` },
+            }
+          }
+        }
+      }
+
+      // ── Read: check secret file deny-list ──
+      if (toolName === 'Read') {
+        const filePath = (input.file_path as string) ?? ''
+        const result = evaluateFilePolicy(filePath, commandPolicy)
+
+        if (result === 'block') {
+          this.pushEvent(managed, 'system', {
+            content: `⛔ BLOCKED: read of secret file ${filePath.split('/').pop()}`,
+          })
+          return {
+            behavior: 'allow' as const,
+            updatedInput: { ...input, file_path: '/dev/null' },
+          }
+        }
+      }
+
+      // ── Write/Edit: check if outside target directory ──
+      if ((toolName === 'Write' || toolName === 'Edit') && managed.targetDir) {
+        const filePath = (input.file_path as string) ?? ''
+        if (filePath && !filePath.startsWith(managed.targetDir)) {
+          const approved = await this.askUserApproval(
+            managed,
+            `Agent wants to write to: \`${filePath}\``,
+            `This file is outside the target directory (${managed.targetDir}).`,
+          )
+          if (!approved) {
+            this.pushEvent(managed, 'system', {
+              content: `⚠️ DENIED: write outside target dir to ${filePath.split('/').pop()}`,
+            })
+            return {
+              behavior: 'allow' as const,
+              updatedInput: input,
+            }
+          }
+        }
+      }
+
+      // Auto-approve all other tools — log to audit
+      this.logAudit(managed.sessionId, toolName, this.summarizeToolInput(toolName, input), 'allow')
       return { behavior: 'allow' as const, updatedInput: input }
     }
+  }
+
+  /** Log a tool call to the session audit log */
+  private logAudit(sessionId: string, toolName: string, inputSummary: string, policyResult: 'allow' | 'ask' | 'block', userDecision?: string): void {
+    try {
+      db.insert(sessionAuditLog).values({
+        session_id: sessionId,
+        tool_name: toolName,
+        tool_input_summary: inputSummary.slice(0, 500),
+        policy_result: policyResult,
+        user_decision: userDecision ?? null,
+      }).run()
+    } catch {
+      // Audit logging should never block tool execution
+    }
+  }
+
+  /** Redact and summarize tool input for audit logging */
+  private summarizeToolInput(toolName: string, input: Record<string, unknown>): string {
+    if (toolName === 'Bash') return (input.command as string ?? '').slice(0, 300)
+    if (toolName === 'Read') return (input.file_path as string ?? '')
+    if (toolName === 'Write' || toolName === 'Edit') return (input.file_path as string ?? '')
+    if (toolName === 'Grep') return `pattern: ${(input.pattern as string ?? '').slice(0, 100)}`
+    if (toolName === 'Glob') return `pattern: ${(input.pattern as string ?? '').slice(0, 100)}`
+    return JSON.stringify(input).slice(0, 200)
+  }
+
+  /** Ask user for approval via the same Q&A mechanism used by AskUserQuestion */
+  private async askUserApproval(managed: ManagedSession, question: string, context: string): Promise<boolean> {
+    // Update session status to waiting_input
+    db.update(sessions)
+      .set({ status: 'waiting_input' })
+      .where(eq(sessions.id, managed.sessionId))
+      .run()
+
+    this.pushEvent(managed, 'tool_use', {
+      content: question,
+      toolName: 'SafetyApproval',
+      toolInput: context,
+      questionData: {
+        text: question,
+        options: ['Approve', 'Deny'],
+        context,
+      },
+    })
+
+    emitToSession(managed.sessionId, 'session:question', {
+      sessionId: managed.sessionId,
+      question: { text: question, options: ['Approve', 'Deny'], context },
+    })
+    emitToProject(managed.projectId, 'session:lifecycle', {
+      session: { id: managed.sessionId, status: 'waiting_input' },
+      action: 'waiting_input',
+    })
+
+    // Wait for user answer
+    const answer = await new Promise<string>((resolve, reject) => {
+      managed.pendingAnswer = resolve
+      const onAbort = () => reject(new DOMException('Session cancelled', 'AbortError'))
+      managed.abortController.signal.addEventListener('abort', onAbort, { once: true })
+    })
+    managed.pendingAnswer = null
+
+    // Restore running status
+    db.update(sessions)
+      .set({ status: 'running' })
+      .where(eq(sessions.id, managed.sessionId))
+      .run()
+
+    emitToProject(managed.projectId, 'session:lifecycle', {
+      session: { id: managed.sessionId, status: 'running' },
+      action: 'resumed',
+    })
+
+    return answer.toLowerCase().includes('approve') || answer.toLowerCase() === 'yes'
   }
 
   private async handleAskUserQuestion(
     managed: ManagedSession,
     input: Record<string, unknown>,
   ): Promise<{ behavior: 'allow'; updatedInput: Record<string, unknown> }> {
-    // Extract question
-    const questions = input.questions as Array<{ question: string }> | undefined
-    const questionText = questions?.[0]?.question ?? (input.question as string ?? 'Agent needs input')
-    const options = (input.options as string[]) ?? []
-    const context = (input.context as string) ?? ''
+    // Extract question — handle both new format (questions array) and old format
+    const questions = input.questions as Array<{ question: string; header?: string; options?: Array<string | { label?: string; description?: string }> }> | undefined
+    const firstQ = questions?.[0]
+
+    const questionText = firstQ?.question ?? (input.question as string ?? 'Agent needs input')
+
+    const rawOptions = firstQ?.options ?? (input.options as unknown[]) ?? []
+    const options = rawOptions.map((o: unknown) =>
+      typeof o === 'string' ? o : (o as Record<string, string>).label ?? (o as Record<string, string>).description ?? String(o)
+    )
+    const context = firstQ?.header ?? (input.context as string) ?? ''
 
     // Update session status to waiting_input
     db.update(sessions)
@@ -376,7 +883,7 @@ class SessionRunner {
       .where(eq(sessions.id, managed.sessionId))
       .run()
 
-    // Push question event
+    // Push question event with questionData for persistence
     this.pushEvent(managed, 'tool_use', {
       content: questionText,
       toolName: 'AskUserQuestion',
@@ -393,6 +900,20 @@ class SessionRunner {
       session: { id: managed.sessionId, status: 'waiting_input' },
       action: 'waiting_input',
     })
+
+    // Create notification for session owner
+    const questionSession = db.select().from(sessions).where(eq(sessions.id, managed.sessionId)).get()
+    if (questionSession) {
+      db.insert(notifications).values({
+        id: `notif_q_${managed.sessionId}_${Date.now()}`,
+        user_id: questionSession.user_id,
+        project_id: managed.projectId,
+        type: 'question_waiting',
+        title: 'Agent needs input',
+        body: questionText.slice(0, 200),
+        link: `/agents/${managed.sessionId}`,
+      }).run()
+    }
 
     // Wait for user answer OR abort
     const userAnswer = await new Promise<string>((resolve, reject) => {
@@ -420,6 +941,60 @@ class SessionRunner {
     }
 
     return { behavior: 'allow' as const, updatedInput }
+  }
+
+  // ─── Capabilities Enrichment ────────────────────────────────────────────
+
+  private async enrichCapabilities(agentQuery: ReturnType<typeof query>, managed: ManagedSession): Promise<void> {
+    try {
+      const [commands, agents] = await Promise.all([
+        (agentQuery as any).supportedCommands?.() ?? [],
+        (agentQuery as any).supportedAgents?.() ?? [],
+      ])
+
+      const caps = this.lastCapabilities
+      if (!caps) return
+
+      // Enrich commands with descriptions
+      if (Array.isArray(commands) && commands.length > 0) {
+        const cmdMap = new Map<string, string>()
+        for (const cmd of commands) {
+          if (cmd.name) cmdMap.set(cmd.name, cmd.description ?? '')
+        }
+        caps.commands = caps.commands.map((c) => ({
+          name: c.name,
+          description: cmdMap.get(c.name) ?? c.description,
+        }))
+      }
+
+      // Enrich agents with descriptions
+      if (Array.isArray(agents) && agents.length > 0) {
+        const agentMap = new Map<string, string>()
+        for (const a of agents) {
+          if (a.name) agentMap.set(a.name, a.description ?? '')
+        }
+        caps.agents = caps.agents.map((a) => ({
+          name: a.name,
+          description: agentMap.get(a.name) ?? a.description,
+        }))
+      }
+
+      // Enrich skills — use command descriptions where available
+      if (caps.skills.length > 0 && Array.isArray(commands)) {
+        const cmdMap = new Map<string, string>()
+        for (const cmd of commands) {
+          if (cmd.name) cmdMap.set(cmd.name, cmd.description ?? '')
+        }
+        caps.skills = caps.skills.map((s) => ({
+          name: s.name,
+          description: cmdMap.get(s.name) ?? s.description,
+        }))
+      }
+
+      this.lastCapabilities = caps
+    } catch {
+      // SDK methods may not be available — ignore
+    }
   }
 
   // ─── Event Storage & Emission ─────────────────────────────────────────
@@ -475,6 +1050,34 @@ class SessionRunner {
     })
     emitToSession(sessionId, 'session:cancelled', { session_id: sessionId })
 
+    this.managed.delete(sessionId)
+    return true
+  }
+
+  /** Interrupt the current turn — aborts agent but goes to idle (resumable), not cancelled */
+  interruptSession(sessionId: string): boolean {
+    const managed = this.managed.get(sessionId)
+    if (!managed) return false
+
+    const session = db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
+    if (!session || (session.status !== 'running' && session.status !== 'waiting_input')) return false
+
+    managed.abortController.abort()
+
+    db.update(sessions)
+      .set({ status: 'idle' })
+      .where(eq(sessions.id, sessionId))
+      .run()
+
+    this.pushEvent(managed, 'system', { content: 'Agent interrupted by user — session idle, send a message to resume.' })
+    emitToProject(managed.projectId, 'session:lifecycle', {
+      session: { id: sessionId, status: 'idle' },
+      action: 'idle',
+    })
+
+    // Keep managed (don't delete) — session is resumable
+    // Create fresh abort controller for next resume
+    managed.abortController = new AbortController()
     return true
   }
 
@@ -488,6 +1091,249 @@ class SessionRunner {
     // Resolve the pending promise
     managed.pendingAnswer(answer)
     return true
+  }
+
+  /** Send a follow-up message to an idle or running session */
+  sendMessage(sessionId: string, message: string, attachments?: Attachment[]): boolean {
+    const managed = this.managed.get(sessionId)
+    const session = db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
+    if (!session) return false
+
+    // Only allow sending messages to idle or running sessions
+    if (session.status !== 'idle' && session.status !== 'running' && session.status !== 'waiting_input') {
+      return false
+    }
+
+    // If running or waiting, abort current execution first (interrupt)
+    if (managed && (session.status === 'running' || session.status === 'waiting_input')) {
+      managed.abortController.abort()
+    }
+
+    // Save attachments to disk
+    const savedPaths: string[] = []
+    if (attachments?.length) {
+      for (const att of attachments) {
+        // Sanitize filename to prevent path traversal
+        const safeName = att.name.replace(/[/\\]/g, '_').replace(/\.\./g, '_').slice(0, 200)
+        const filename = `${sessionId}-${nanoid(6)}-${safeName}`
+        const filepath = join(ATTACHMENTS_DIR, filename)
+        writeFileSync(filepath, Buffer.from(att.data, 'base64'))
+        savedPaths.push(filepath)
+      }
+    }
+
+    // Build display content for stream event
+    const displayContent = savedPaths.length > 0
+      ? `${message}\n\n${attachments!.map((a) => `📎 ${a.name}`).join('\n')}`
+      : message
+
+    // Set up managed session for resume
+    const abortController = new AbortController()
+    const targetDir = session.target_dir || this.projectRoot
+
+    if (managed) {
+      // Reuse existing managed session with new abort controller
+      managed.abortController = abortController
+    } else {
+      // Create new managed session for idle resume
+      const newManaged: ManagedSession = {
+        sessionId,
+        projectId: session.project_id,
+        abortController,
+        claudeSessionId: session.claude_session_id ?? null,
+        pendingAnswer: null,
+        eventCounter: 0,
+        permissionMode: session.permission_mode ?? 'default',
+        targetDir,
+        commandPolicy: loadProjectPolicy(session.project_id),
+        inputTokens: 0,
+        outputTokens: 0,
+        toolCallCount: 0,
+        toolCallTimestamps: [],
+        limits: loadSessionLimits(session.project_id),
+        inputWarned: false,
+        outputWarned: false,
+        toolCountWarned: false,
+        rateWarned: false,
+      }
+      this.managed.set(sessionId, newManaged)
+    }
+
+    const mgd = this.managed.get(sessionId)!
+
+    // Push user message event
+    this.pushEvent(mgd, 'system', {
+      content: displayContent,
+      type: 'user_message',
+      ...(attachments?.length ? { attachments } : {}),
+    })
+
+    // Update status to running
+    db.update(sessions)
+      .set({ status: 'running' })
+      .where(eq(sessions.id, sessionId))
+      .run()
+
+    emitToProject(session.project_id, 'session:lifecycle', {
+      session: { ...session, status: 'running' },
+      action: 'resumed',
+    })
+
+    // Build prompt with file paths
+    let prompt = message
+    if (savedPaths.length > 0) {
+      const fileSection = savedPaths.map((p, i) => {
+        const att = attachments![i]
+        const typeHint = att.type === 'image'
+          ? 'Use the Read tool to view this image'
+          : 'Use the Read tool to read this file'
+        return `Attached ${att.type}: ${att.name}\nSaved at: ${p}\n${typeHint}`
+      }).join('\n\n')
+      prompt = `${fileSection}\n\n${message}`
+    }
+
+    // Fetch user's API key for session env
+    const sessionEnv = this.buildSessionEnv(session.user_id, session.project_id)
+
+    // Run agent asynchronously with resume
+    this.runAgent(mgd, prompt, session.model, true, sessionEnv).catch((err) => {
+      console.error(`[SessionRunner] unexpected error for session ${sessionId}:`, err)
+    })
+
+    return true
+  }
+
+  /** Manually complete an idle session */
+  completeSession(sessionId: string): boolean {
+    const session = db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
+    if (!session || session.status !== 'idle') return false
+
+    const now = Math.floor(Date.now() / 1000)
+    db.update(sessions)
+      .set({ status: 'completed', finished_at: now })
+      .where(eq(sessions.id, sessionId))
+      .run()
+
+    // Push event if managed
+    const managed = this.managed.get(sessionId)
+    if (managed) {
+      this.pushEvent(managed, 'system', { content: 'Session marked as completed.' })
+      this.managed.delete(sessionId)
+    }
+
+    emitToProject(session.project_id, 'session:lifecycle', {
+      session: { ...session, status: 'completed', finished_at: now },
+      action: 'completed',
+    })
+
+    db.insert(activityLog).values({
+      project_id: session.project_id,
+      user_id: session.user_id,
+      action: 'session_completed',
+      details: JSON.stringify({ session_id: sessionId, name: session.name }),
+    }).run()
+
+    return true
+  }
+
+  /** Update permission mode for a session (takes effect on next resume) */
+  setPermissionMode(sessionId: string, mode: string): boolean {
+    const session = db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
+    if (!session) return false
+
+    db.update(sessions)
+      .set({ permission_mode: mode as typeof sessions.$inferInsert['permission_mode'] })
+      .where(eq(sessions.id, sessionId))
+      .run()
+
+    // Update managed session if it exists
+    const managed = this.managed.get(sessionId)
+    if (managed) {
+      managed.permissionMode = mode
+    }
+
+    return true
+  }
+
+  /** Delete a single session and its events */
+  deleteSession(sessionId: string): boolean {
+    const session = db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
+    if (!session) return false
+
+    // Abort if running
+    const managed = this.managed.get(sessionId)
+    if (managed) {
+      managed.abortController.abort()
+      this.managed.delete(sessionId)
+    }
+
+    // Delete Claude Code history files
+    if (session.claude_session_id) {
+      this.deleteSessionHistory(session.claude_session_id)
+    }
+
+    // Clean up attachment files for this session
+    this.cleanupAttachments(sessionId)
+
+    // Delete events first (FK constraint)
+    db.delete(sessionEvents).where(eq(sessionEvents.session_id, sessionId)).run()
+    db.delete(sessions).where(eq(sessions.id, sessionId)).run()
+
+    emitToProject(session.project_id, 'session:lifecycle', {
+      session: { id: sessionId, status: 'deleted' },
+      action: 'deleted',
+    })
+
+    return true
+  }
+
+  /** Remove attachment files for a session from the temp directory */
+  private cleanupAttachments(sessionId: string): void {
+    try {
+      if (!existsSync(ATTACHMENTS_DIR)) return
+      const files = readdirSync(ATTACHMENTS_DIR)
+      for (const file of files) {
+        if (file.startsWith(`${sessionId}-`)) {
+          unlinkSync(join(ATTACHMENTS_DIR, file))
+        }
+      }
+    } catch {
+      // Non-critical — log but don't fail
+      console.error(`[SessionRunner] Failed to cleanup attachments for ${sessionId}`)
+    }
+  }
+
+  /** Delete all completed/failed/cancelled sessions for a project */
+  bulkDeleteSessions(projectId: string): { deleted: number; historyDeleted: number } {
+    const terminal = db
+      .select()
+      .from(sessions)
+      .where(eq(sessions.project_id, projectId))
+      .all()
+      .filter((s) => ['completed', 'failed', 'cancelled'].includes(s.status))
+
+    let deleted = 0
+    let historyDeleted = 0
+
+    for (const session of terminal) {
+      if (session.claude_session_id) {
+        const ok = this.deleteSessionHistory(session.claude_session_id)
+        if (ok) historyDeleted++
+      }
+      db.delete(sessionEvents).where(eq(sessionEvents.session_id, session.id)).run()
+      db.delete(sessions).where(eq(sessions.id, session.id)).run()
+      deleted++
+    }
+
+    if (deleted > 0) {
+      emitToProject(projectId, 'session:lifecycle', {
+        session: null,
+        action: 'bulk_deleted',
+        count: deleted,
+      })
+    }
+
+    return { deleted, historyDeleted }
   }
 
   // ─── Session Environment ────────────────────────────────────────
@@ -504,15 +1350,17 @@ class SessionRunner {
       apiKey = user?.api_key ?? undefined
     }
 
+    // Explicit allowlist — ONLY these vars reach the agent session.
+    // JWT_SECRET, ADMIN_API_KEY, DATABASE_PATH, cloud credentials, MCP tokens are excluded.
     return {
       PATH: process.env.PATH,
       HOME: process.env.HOME,
       USER: process.env.USER,
-      SHELL: process.env.SHELL,
-      LANG: process.env.LANG,
-      TERM: process.env.TERM,
+      SHELL: '/bin/bash',
+      LANG: process.env.LANG ?? 'en_US.UTF-8',
+      TERM: 'xterm-256color',
       NODE_ENV: process.env.NODE_ENV,
-      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY, // Required by Agent SDK
       CTW_API_KEY: apiKey,
       CTW_SERVER_URL: `http://localhost:${process.env.PORT || 3000}`,
       CTW_PROJECT_ID: projectId,
@@ -520,6 +1368,28 @@ class SessionRunner {
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────
+
+  private deleteSessionHistory(claudeSessionId: string): boolean {
+    const claudeDir = join(homedir(), '.claude')
+    try {
+      const projectsDir = join(claudeDir, 'projects')
+      if (!existsSync(projectsDir)) return false
+
+      for (const projectHash of readdirSync(projectsDir)) {
+        const sessionsDir = join(projectsDir, projectHash, 'sessions')
+        if (!existsSync(sessionsDir)) continue
+
+        const sessionFile = join(sessionsDir, `${claudeSessionId}.jsonl`)
+        if (existsSync(sessionFile)) {
+          unlinkSync(sessionFile)
+          return true
+        }
+      }
+    } catch (e) {
+      console.warn(`[cleanup] Failed to delete session history for ${claudeSessionId}:`, e)
+    }
+    return false
+  }
 
   private formatToolInput(toolName: string, input: Record<string, unknown>): string {
     if (!input) return ''

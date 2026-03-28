@@ -3,25 +3,20 @@ import { toast } from 'sonner'
 import { epicsApi } from '@/lib/resources'
 import { queryKeys } from '@/lib/query-keys'
 import { useProject } from '@/providers/project-provider'
-import type { Epic as ServerEpic, BoardEpic as Epic, UiStatus, Priority, EpicType, Bead, BeadStatus, BeadType } from '@/types'
+import type { Epic as ServerEpic, BoardEpic as Epic, UiStatus, Priority, EpicType } from '@/types'
 
 // ─── Server → UI transforms ────────────────────────────────────────────────────
 
+const VALID_UI_STATUSES = new Set<string>(['blocked', 'ready', 'in_progress', 'in_review', 'done', 'cancelled'])
+
 /** Transform server epic response → flat UI Epic used by board components */
 export function toUIEpic(serverEpic: ServerEpic): Epic {
-  const bead = serverEpic.bead
-  const raw = bead as Record<string, unknown> | undefined
-
-  // br show returns children for epic-type beads
-  const children = raw?.children as Array<{ status: string }> | undefined
-  const total = children?.length ?? 0
-  const done = children?.filter((c) => c.status === 'done' || c.status === 'closed').length ?? 0
-
   let agentStatus: Epic['agentStatus'] = undefined
   if (serverEpic.activeSession) {
     const s = serverEpic.activeSession.status
     if (s === 'running') agentStatus = 'running'
     else if (s === 'waiting_input') agentStatus = 'waiting_input'
+    else if (s === 'idle') agentStatus = 'idle'
   }
 
   let prNumber: number | undefined
@@ -32,15 +27,13 @@ export function toUIEpic(serverEpic: ServerEpic): Epic {
 
   return {
     id: serverEpic.id,
-    beadId: serverEpic.beadEpicId,
-    title: bead?.title ?? 'Untitled',
-    description: bead?.description ?? '',
+    title: serverEpic.title || 'Untitled',
+    description: serverEpic.description || '',
     uiStatus: VALID_UI_STATUSES.has(serverEpic.uiStatus) ? serverEpic.uiStatus as UiStatus : 'blocked',
-    priority: ([0, 1, 2, 3].includes(bead?.priority ?? 2) ? bead!.priority : 2) as Priority,
-    type: (['feature', 'bug', 'task', 'docs'].includes(bead?.type ?? 'task') ? bead!.type : 'task') as EpicType,
-    labels: safeStringArray(bead?.labels),
-    assigneeId: '',
-    beadProgress: { total, done },
+    priority: ([0, 1, 2, 3].includes(serverEpic.priority) ? serverEpic.priority : 2) as Priority,
+    type: (['feature', 'bug', 'task', 'docs'].includes(serverEpic.type) ? serverEpic.type : 'task') as EpicType,
+    labels: Array.isArray(serverEpic.labels) ? serverEpic.labels : [],
+    assignee: serverEpic.assignee ?? null,
     agentStatus,
     activeSessionId: serverEpic.activeSession?.id,
     prUrl: serverEpic.prUrl ?? undefined,
@@ -52,44 +45,9 @@ export function toUIEpic(serverEpic: ServerEpic): Epic {
   }
 }
 
-const VALID_BEAD_STATUSES = new Set<string>(['open', 'in_progress', 'done', 'blocked'])
-const VALID_BEAD_TYPES = new Set<string>(['task', 'bug', 'spike'])
-const VALID_UI_STATUSES = new Set<string>(['blocked', 'ready', 'in_progress', 'in_review', 'done', 'cancelled'])
-
-function safeStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return []
-  return value.filter((item): item is string => typeof item === 'string')
-}
-
-/** Transform bead child from br show → UI Bead used by BeadList */
-export function toUIBead(child: Record<string, unknown>, epicId: string): Bead {
-  const status = typeof child.status === 'string' && VALID_BEAD_STATUSES.has(child.status)
-    ? child.status as BeadStatus
-    : 'open'
-  const type = typeof child.type === 'string' && VALID_BEAD_TYPES.has(child.type)
-    ? child.type as BeadType
-    : 'task'
-
-  return {
-    id: String(child.id ?? ''),
-    epicId,
-    title: String(child.title ?? ''),
-    description: String(child.description ?? ''),
-    status,
-    priority: Number(child.priority ?? 2),
-    type,
-    assigneeId: typeof child.assigneeId === 'string' ? child.assigneeId : undefined,
-    labels: safeStringArray(child.labels),
-    dependencies: safeStringArray(child.dependencies),
-    createdAt: Number(child.createdAt ?? 0),
-    updatedAt: Number(child.updatedAt ?? 0),
-  }
-}
-
-// ─── Epic detail with beads + sessions ──────────────────────────────────────────
+// ─── Epic detail with sessions ────────────────────────────────────────────────
 
 export interface EpicDetail extends Epic {
-  beads: Bead[]
   sessions: Array<{
     id: string
     status: string
@@ -101,11 +59,7 @@ export interface EpicDetail extends Epic {
 
 function toEpicDetail(serverEpic: ServerEpic): EpicDetail {
   const uiEpic = toUIEpic(serverEpic)
-  const raw = serverEpic.bead as Record<string, unknown> | undefined
-  const children = (raw?.children as Record<string, unknown>[]) ?? []
-  const beads = children.map((c) => toUIBead(c, serverEpic.id))
 
-  // Sessions come from the detail endpoint
   const rawSessions = serverEpic.sessions ?? []
   const sessions = rawSessions.map((s) => ({
     id: s.id,
@@ -119,7 +73,7 @@ function toEpicDetail(serverEpic: ServerEpic): EpicDetail {
     model: String(s.model ?? 'sonnet'),
   }))
 
-  return { ...uiEpic, beads, sessions }
+  return { ...uiEpic, sessions }
 }
 
 // ─── Query hooks ────────────────────────────────────────────────────────────────
@@ -160,8 +114,9 @@ export function useCreateEpic() {
       description: string
       priority: number
       labels: string[]
+      type?: string
     }) => {
-      const { epic } = await epicsApi.create(projectId, { ...data, repos: [] })
+      const { epic } = await epicsApi.create(projectId, data)
       return toUIEpic(epic)
     },
     onSuccess: () => {
@@ -175,14 +130,14 @@ export function useCreateEpic() {
 
 export interface UpdateEpicInput {
   epicId: string
-  // App DB fields
+  title?: string
+  description?: string
+  priority?: number
+  type?: string
+  labels?: string[]
+  assignee?: string | null
   uiStatus?: string
   gitBranches?: string[]
-  // Bead-level fields (synced via br CLI on server)
-  beadPriority?: number
-  beadType?: string
-  beadLabels?: string[]
-  beadAssignee?: string
 }
 
 export function useUpdateEpic() {

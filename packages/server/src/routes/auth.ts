@@ -30,7 +30,11 @@ export function createAuthRouter({ db, users }: AuthRouterDeps): Router {
       }
 
       // Create JWT and set as HttpOnly cookie
-      const token = jwt.sign({ userId: user.id }, getJwtSecret(), { expiresIn: '7d' })
+      const token = jwt.sign({ userId: user.id }, getJwtSecret(), {
+        expiresIn: '7d',
+        issuer: 'ctw',
+        audience: 'ctw-api',
+      })
 
       res.cookie('ctw_session', token, {
         httpOnly: true,

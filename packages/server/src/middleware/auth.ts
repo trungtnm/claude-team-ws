@@ -42,7 +42,7 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     // Try JWT from HttpOnly cookie
     const token = req.cookies?.ctw_session
     if (token) {
-      const payload = jwt.verify(token, jwtSecret) as { userId: string }
+      const payload = jwt.verify(token, jwtSecret, { issuer: 'ctw', audience: 'ctw-api' }) as { userId: string }
       const user = await findUser({ userId: payload.userId })
       if (user) {
         req.user = user

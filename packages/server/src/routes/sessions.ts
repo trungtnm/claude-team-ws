@@ -3,18 +3,25 @@ import { eq, and, desc, gt } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { sessions, sessionEvents, projects, activityLog } from '../db/schema.js'
+import { sessions, sessionEvents, projects, activityLog, sessionAuditLog } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { requireProjectMember } from '../middleware/project-access.js'
 import { emitToProject, emitToSession } from '../services/socket-manager.js'
 import { getSessionRunner } from '../services/session-runner.js'
+import type { Attachment } from '../services/session-runner.js'
 import { logError } from '../utils/log-error.js'
+import { resolve as resolvePath } from 'path'
 
 // Mounted at /api/projects/:projectId/sessions
 const router: RouterType = Router({ mergeParams: true })
 
 router.use(authenticate)
 router.use(requireProjectMember)
+
+/** Check if the user owns a session or is a techlead */
+function canMutateSession(user: Express.User, sessionUserId: string): boolean {
+  return user.id === sessionUserId || user.role === 'techlead'
+}
 
 /** Extract a single string param (Express 5 params can be string | string[]) */
 function param(req: Request, name: string): string {
@@ -54,6 +61,8 @@ const createSessionSchema = z.object({
   name: z.string().max(200).optional(),
   prompt: z.string().min(1).max(50000),
   model: z.enum(['sonnet', 'opus', 'haiku']).optional(),
+  permission_mode: z.enum(['default', 'plan', 'acceptEdits', 'bypassPermissions']).optional(),
+  target_dir: z.string().max(500).optional(),
 })
 
 // POST / — create session (check concurrency limits)
@@ -67,13 +76,27 @@ router.post('/', (req, res) => {
 
     const projectId = param(req, 'projectId')
     const user = req.user!
-    const { epic_id, name, prompt, model } = parsed.data
+    let { epic_id, name, prompt, model, permission_mode, target_dir } = parsed.data
 
     // Check concurrency limits
     const project = db.select().from(projects).where(eq(projects.id, projectId)).get()
     if (!project) {
       res.status(404).json({ error: 'Project not found' })
       return
+    }
+
+    // Validate target_dir is within project root to prevent path traversal
+    if (target_dir) {
+      const resolved = resolvePath(target_dir)
+      if (!resolved.startsWith(project.project_root)) {
+        res.status(400).json({ error: 'target_dir must be within the project root' })
+        return
+      }
+    }
+
+    // Permission mode gating: in safety_mode 'b', non-techleads get downgraded from bypassPermissions
+    if (permission_mode === 'bypassPermissions' && user.role !== 'techlead' && project.safety_mode === 'b') {
+      permission_mode = 'acceptEdits'
     }
 
     const runningCount = db
@@ -101,6 +124,8 @@ router.post('/', (req, res) => {
       name: name ?? null,
       model: model ?? 'sonnet',
       status: 'queued',
+      permission_mode: permission_mode ?? 'default',
+      target_dir: target_dir ?? null,
       prompt,
       created_at: now,
     }).run()
@@ -120,6 +145,17 @@ router.post('/', (req, res) => {
     res.status(201).json({ session })
   } catch (err) {
       res.status(500).json({ error: logError('sessions', err) })
+  }
+})
+
+// GET /capabilities — get last-known capabilities (commands, agents, skills)
+router.get('/capabilities', (_req, res) => {
+  try {
+    const runner = getSessionRunner()
+    const capabilities = runner?.getCapabilities()
+    res.json({ capabilities: capabilities ?? { commands: [], agents: [], skills: [], tools: [] } })
+  } catch (err) {
+    res.status(500).json({ error: logError('sessions/capabilities', err) })
   }
 })
 
@@ -146,11 +182,12 @@ router.get('/:sessionId', (req, res) => {
   }
 })
 
-// POST /:sessionId/cancel — cancel running session
+// POST /:sessionId/cancel — cancel running/idle session
 router.post('/:sessionId/cancel', (req, res) => {
   try {
     const projectId = param(req, 'projectId')
     const sessionId = param(req, 'sessionId')
+    const user = req.user!
 
     const session = db
       .select()
@@ -163,7 +200,12 @@ router.post('/:sessionId/cancel', (req, res) => {
       return
     }
 
-    if (session.status !== 'running' && session.status !== 'queued' && session.status !== 'waiting_input') {
+    if (!canMutateSession(user, session.user_id)) {
+      res.status(403).json({ error: 'Only the session owner or techlead can cancel sessions' })
+      return
+    }
+
+    if (!['running', 'queued', 'waiting_input', 'idle'].includes(session.status)) {
       res.status(400).json({ error: `Cannot cancel session in ${session.status} status` })
       return
     }
@@ -173,7 +215,7 @@ router.post('/:sessionId/cancel', (req, res) => {
     const cancelledViaRunner = runner?.cancelSession(sessionId)
 
     if (!cancelledViaRunner) {
-      // Session not managed by runner (e.g., still queued) — update DB directly
+      // Session not managed by runner (e.g., still queued or idle without managed) — update DB directly
       const now = Math.floor(Date.now() / 1000)
       db.update(sessions)
         .set({ status: 'cancelled', finished_at: now })
@@ -188,6 +230,57 @@ router.post('/:sessionId/cancel', (req, res) => {
     res.json({ session: updated })
   } catch (err) {
       res.status(500).json({ error: logError('sessions', err) })
+  }
+})
+
+// POST /:sessionId/interrupt — interrupt running agent, session goes idle (resumable)
+router.post('/:sessionId/interrupt', (req, res) => {
+  try {
+    const projectId = param(req, 'projectId')
+    const sessionId = param(req, 'sessionId')
+    const user = req.user!
+
+    const session = db
+      .select()
+      .from(sessions)
+      .where(and(eq(sessions.id, sessionId), eq(sessions.project_id, projectId)))
+      .get()
+
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' })
+      return
+    }
+
+    if (!canMutateSession(user, session.user_id)) {
+      res.status(403).json({ error: 'Only the session owner or techlead can interrupt sessions' })
+      return
+    }
+
+    if (session.status !== 'running' && session.status !== 'waiting_input') {
+      res.status(400).json({ error: `Cannot interrupt session in ${session.status} status` })
+      return
+    }
+
+    const runner = getSessionRunner()
+    const interrupted = runner?.interruptSession(sessionId)
+
+    if (!interrupted) {
+      // Fallback: update DB directly
+      db.update(sessions)
+        .set({ status: 'idle' })
+        .where(eq(sessions.id, sessionId))
+        .run()
+
+      emitToProject(projectId, 'session:lifecycle', {
+        session: { ...session, status: 'idle' },
+        action: 'idle',
+      })
+    }
+
+    const updated = db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
+    res.json({ session: updated })
+  } catch (err) {
+    res.status(500).json({ error: logError('sessions', err) })
   }
 })
 
@@ -293,32 +386,55 @@ router.post('/:sessionId/complete', (req, res) => {
       return
     }
 
-    if (session.status !== 'queued' && session.status !== 'running') {
-      res.status(400).json({ error: `Cannot complete session in ${session.status} status` })
+    if (session.status !== 'idle') {
+      res.status(400).json({ error: `Cannot complete session in ${session.status} status — must be idle` })
       return
     }
 
-    const now = Math.floor(Date.now() / 1000)
-    db.update(sessions)
-      .set({ status: 'completed', finished_at: now })
-      .where(eq(sessions.id, sessionId))
-      .run()
+    const runner = getSessionRunner()
+    const completed = runner?.completeSession(sessionId)
+
+    if (!completed) {
+      // Fallback: update directly
+      const now = Math.floor(Date.now() / 1000)
+      db.update(sessions)
+        .set({ status: 'completed', finished_at: now })
+        .where(eq(sessions.id, sessionId))
+        .run()
+
+      emitToProject(projectId, 'session:lifecycle', {
+        session: { ...session, status: 'completed', finished_at: now },
+        action: 'completed',
+      })
+    }
 
     const updated = db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
-    emitToProject(projectId, 'session:lifecycle', { session: updated, action: 'completed' })
     res.json({ session: updated })
   } catch (err) {
     res.status(500).json({ error: logError('sessions', err) })
   }
 })
 
-// POST /:sessionId/message — send follow-up message to running session
+// POST /:sessionId/message — send follow-up message to idle/running session
+const MAX_ATTACHMENT_SIZE = 5_000_000 // ~3.75MB decoded from base64
+const MAX_ATTACHMENTS = 10
+
+const messageSchema = z.object({
+  message: z.string().min(1),
+  attachments: z.array(z.object({
+    type: z.enum(['image', 'file']),
+    name: z.string().max(500),
+    mimeType: z.string().max(200),
+    data: z.string().max(MAX_ATTACHMENT_SIZE), // base64, ~3.75MB decoded
+  })).max(MAX_ATTACHMENTS).optional(),
+})
+
 router.post('/:sessionId/message', (req, res) => {
   try {
     const projectId = param(req, 'projectId')
     const sessionId = param(req, 'sessionId')
 
-    const parsed = z.object({ message: z.string().min(1) }).safeParse(req.body)
+    const parsed = messageSchema.safeParse(req.body)
     if (!parsed.success) {
       res.status(400).json({ error: 'Validation failed', issues: parsed.error.issues })
       return
@@ -335,11 +451,25 @@ router.post('/:sessionId/message', (req, res) => {
       return
     }
 
-    // Emit message to session room for the runner to pick up
-    emitToSession(sessionId, 'session:message', {
-      session_id: sessionId,
-      message: parsed.data.message,
-    })
+    if (!['idle', 'running', 'waiting_input'].includes(session.status)) {
+      res.status(400).json({ error: `Cannot send message to session in ${session.status} status` })
+      return
+    }
+
+    const runner = getSessionRunner()
+    const sent = runner?.sendMessage(
+      sessionId,
+      parsed.data.message,
+      parsed.data.attachments as Attachment[] | undefined,
+    )
+
+    if (!sent) {
+      // Fallback: emit via Socket.IO
+      emitToSession(sessionId, 'session:message', {
+        session_id: sessionId,
+        message: parsed.data.message,
+      })
+    }
 
     res.json({ status: 'message_sent' })
   } catch (err) {
@@ -347,7 +477,7 @@ router.post('/:sessionId/message', (req, res) => {
   }
 })
 
-// POST /:sessionId/permission-mode — change permission mode
+// POST /:sessionId/permission-mode — change permission mode (persisted, takes effect on next resume)
 router.post('/:sessionId/permission-mode', (req, res) => {
   try {
     const projectId = param(req, 'projectId')
@@ -372,13 +502,114 @@ router.post('/:sessionId/permission-mode', (req, res) => {
       return
     }
 
-    // Emit permission mode change to session room for runner to pick up
+    // Permission mode gating: check project safety_mode
+    let effectiveMode = parsed.data.mode
+    if (effectiveMode === 'bypassPermissions') {
+      const project = db.select().from(projects).where(eq(projects.id, projectId)).get()
+      const user = req.user!
+      if (project?.safety_mode === 'b' && user.role !== 'techlead') {
+        effectiveMode = 'acceptEdits'
+      }
+    }
+
+    // Always persist in DB directly, then also update managed session if runner exists
+    db.update(sessions)
+      .set({ permission_mode: effectiveMode as typeof sessions.$inferInsert['permission_mode'] })
+      .where(eq(sessions.id, sessionId))
+      .run()
+
+    const runner = getSessionRunner()
+    if (runner) {
+      const managed = runner.getManaged(sessionId)
+      if (managed) managed.permissionMode = effectiveMode
+    }
+
     emitToSession(sessionId, 'session:permission-mode', {
       session_id: sessionId,
-      mode: parsed.data.mode,
+      mode: effectiveMode,
     })
 
-    res.json({ status: 'permission_mode_updated', mode: parsed.data.mode })
+    res.json({ status: 'permission_mode_updated', mode: effectiveMode })
+  } catch (err) {
+    res.status(500).json({ error: logError('sessions', err) })
+  }
+})
+
+// DELETE /:sessionId — delete single session + its events
+router.delete('/:sessionId', (req, res) => {
+  try {
+    const projectId = param(req, 'projectId')
+    const sessionId = param(req, 'sessionId')
+    const user = req.user!
+
+    const session = db
+      .select()
+      .from(sessions)
+      .where(and(eq(sessions.id, sessionId), eq(sessions.project_id, projectId)))
+      .get()
+
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' })
+      return
+    }
+
+    if (!canMutateSession(user, session.user_id)) {
+      res.status(403).json({ error: 'Only the session owner or techlead can delete sessions' })
+      return
+    }
+
+    // Prevent deleting active sessions — cancel or interrupt first
+    if (['running', 'waiting_input'].includes(session.status)) {
+      res.status(400).json({ error: 'Cannot delete a running session. Cancel or interrupt first.' })
+      return
+    }
+
+    const runner = getSessionRunner()
+    const deleted = runner?.deleteSession(sessionId)
+
+    if (!deleted) {
+      // Runner didn't handle it — delete directly
+      db.delete(sessionEvents).where(eq(sessionEvents.session_id, sessionId)).run()
+      db.delete(sessions).where(eq(sessions.id, sessionId)).run()
+      emitToProject(projectId, 'session:lifecycle', {
+        session: { id: sessionId, status: 'deleted' },
+        action: 'deleted',
+      })
+    }
+
+    res.json({ status: 'deleted', sessionId })
+  } catch (err) {
+    res.status(500).json({ error: logError('sessions', err) })
+  }
+})
+
+// DELETE / — bulk delete completed/failed/cancelled sessions
+router.delete('/', (req, res) => {
+  try {
+    const projectId = param(req, 'projectId')
+
+    const runner = getSessionRunner()
+    const result = runner?.bulkDeleteSessions(projectId)
+
+    if (!result) {
+      // Fallback: delete directly
+      const terminal = db
+        .select()
+        .from(sessions)
+        .where(eq(sessions.project_id, projectId))
+        .all()
+        .filter((s) => ['completed', 'failed', 'cancelled'].includes(s.status))
+
+      for (const session of terminal) {
+        db.delete(sessionEvents).where(eq(sessionEvents.session_id, session.id)).run()
+        db.delete(sessions).where(eq(sessions.id, session.id)).run()
+      }
+
+      res.json({ deleted: terminal.length, historyDeleted: 0 })
+      return
+    }
+
+    res.json(result)
   } catch (err) {
     res.status(500).json({ error: logError('sessions', err) })
   }
@@ -425,6 +656,41 @@ router.get('/:sessionId/events', (req, res) => {
     res.json({ events })
   } catch (err) {
       res.status(500).json({ error: logError('sessions', err) })
+  }
+})
+
+// GET /:sessionId/audit — session audit log (tool call tracking)
+router.get('/:sessionId/audit', (req, res) => {
+  try {
+    const projectId = param(req, 'projectId')
+    const sessionId = param(req, 'sessionId')
+    const limit = Math.min(parseInt(req.query.limit as string) || 100, 1000)
+    const offset = parseInt(req.query.offset as string) || 0
+
+    // Verify session belongs to project
+    const session = db
+      .select()
+      .from(sessions)
+      .where(and(eq(sessions.id, sessionId), eq(sessions.project_id, projectId)))
+      .get()
+
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' })
+      return
+    }
+
+    const rows = db
+      .select()
+      .from(sessionAuditLog)
+      .where(eq(sessionAuditLog.session_id, sessionId))
+      .orderBy(desc(sessionAuditLog.created_at))
+      .limit(limit)
+      .offset(offset)
+      .all()
+
+    res.json({ audit: rows, total: rows.length })
+  } catch (err) {
+    res.status(500).json({ error: logError('sessions/audit', err) })
   }
 })
 

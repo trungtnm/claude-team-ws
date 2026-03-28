@@ -325,21 +325,28 @@ export class ClaudeConfigService {
       const stat = statSync(filepath)
       const content = readFileSync(filepath, 'utf-8')
       return { content, mtime: Math.floor(stat.mtimeMs) }
-    } catch {
-      return null
+    } catch (err: unknown) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code === 'ENOENT') return null
+      throw err
     }
   }
 
   private writeFile(filepath: string, content: string, expectedMtime?: number): void {
     if (expectedMtime !== undefined) {
-      const stat = statSync(filepath, { throwIfNoEntry: false })
-      if (stat && Math.floor(stat.mtimeMs) !== expectedMtime) {
-        const currentContent = readFileSync(filepath, 'utf-8')
-        throw new ConflictError(
-          'File was modified since last read',
-          currentContent,
-          Math.floor(stat.mtimeMs),
-        )
+      try {
+        const stat = statSync(filepath, { throwIfNoEntry: false })
+        if (stat && Math.floor(stat.mtimeMs) !== expectedMtime) {
+          const currentContent = readFileSync(filepath, 'utf-8')
+          throw new ConflictError(
+            'File was modified since last read',
+            currentContent,
+            Math.floor(stat.mtimeMs),
+          )
+        }
+      } catch (err) {
+        if (err instanceof ConflictError) throw err
+        // File deleted between stat and read — proceed with write
       }
     }
 

@@ -10,7 +10,6 @@ export default defineConfig({
   test: {
     globals: true,
     include: ['src/**/*.{test,spec}.ts'],
-    // Integration tests require separate vitest run to avoid parallel DB issues
-    // Run with: vitest run --config vitest.config.ts
+    fileParallelism: false,
   },
 })

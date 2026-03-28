@@ -7,12 +7,10 @@ export interface SessionStats {
   tokensUsed: number
   costUsd: number
   contextPercentage: number
-}
-
-const MODEL_PRICING_PER_MTOK: Record<string, number> = {
-  sonnet: 3,
-  opus: 15,
-  haiku: 0.25,
+  /** Latest input tokens for context detail display */
+  inputTokens: number
+  /** Latest cache read tokens for context detail display */
+  cacheReadTokens: number
 }
 
 const MODEL_CONTEXT_WINDOW: Record<string, number> = {
@@ -25,9 +23,9 @@ const MODEL_CONTEXT_WINDOW: Record<string, number> = {
  * Compute session stats by aggregating session events.
  * - Turns: count of 'assistant' events
  * - Files: unique file paths from tool_use (Write, Edit) events
- * - Tokens: cumulative usage.input_tokens from assistant events
- * - Cost: estimated from token counts using model-specific pricing
- * - Context: latest usage percentage (input_tokens / max_tokens)
+ * - Tokens: cumulative from result events or assistant usage
+ * - Cost: extracted from result events
+ * - Context: latest context window percentage from system events
  */
 export function useSessionStats(sessionId: string | undefined, model = 'sonnet'): SessionStats {
   const { data } = useSessionEventsQuery(sessionId)
@@ -37,6 +35,9 @@ export function useSessionStats(sessionId: string | undefined, model = 'sonnet')
     let turns = 0
     let tokensUsed = 0
     let contextPercentage = 0
+    let costUsd = 0
+    let inputTokens = 0
+    let cacheReadTokens = 0
     const files = new Set<string>()
 
     for (const event of events) {
@@ -49,35 +50,52 @@ export function useSessionStats(sessionId: string | undefined, model = 'sonnet')
 
       if (event.eventType === 'assistant') {
         turns++
+      }
 
-        // Extract token usage from assistant.message.usage
-        const message = parsed.message as Record<string, unknown> | undefined
-        const usage = message?.usage as Record<string, number> | undefined
-        if (usage) {
-          const input = usage.input_tokens ?? 0
-          const cacheCreation = usage.cache_creation_input_tokens ?? 0
-          const cacheRead = usage.cache_read_input_tokens ?? 0
-          tokensUsed += input + cacheCreation + cacheRead
+      // Extract context window from system events (emitted by session runner)
+      if (event.eventType === 'system') {
+        const cw = parsed.contextWindow as Record<string, unknown> | undefined
+        if (cw) {
+          contextPercentage = (cw.usedPercentage as number) ?? contextPercentage
+          const usage = cw.currentUsage as Record<string, number> | undefined
+          if (usage) {
+            inputTokens = usage.inputTokens ?? inputTokens
+            cacheReadTokens = usage.cacheReadInputTokens ?? cacheReadTokens
+          }
+        }
+      }
 
-          // Context percentage: latest snapshot against model's context window
-          const latestContext = input + cacheCreation + cacheRead
-          const maxTokens = MODEL_CONTEXT_WINDOW[model] ?? 200_000
-          contextPercentage = Math.round((latestContext / maxTokens) * 100)
+      // Extract cost and token totals from result events
+      if (event.eventType === 'result') {
+        const content = parsed.content as string | undefined
+        if (content) {
+          try {
+            const resultData = JSON.parse(content)
+            if (resultData.costUsd) costUsd += resultData.costUsd
+            if (resultData.tokensUsed) tokensUsed += resultData.tokensUsed
+            if (resultData.totalTurns) turns = Math.max(turns, resultData.totalTurns)
+          } catch {
+            // Not JSON — ignore
+          }
         }
       }
 
       if (event.eventType === 'tool_use') {
         // Extract file path from tool inputs
-        const toolName = parsed.name as string | undefined
-        const input = parsed.input as Record<string, unknown> | undefined
-        if (input && (toolName === 'Write' || toolName === 'Edit' || toolName === 'write' || toolName === 'edit')) {
-          const filePath = (input.file_path ?? input.filePath) as string | undefined
-          if (filePath) files.add(filePath)
+        const toolName = (parsed.toolName ?? parsed.name) as string | undefined
+        const toolInput = parsed.toolInput as string | undefined
+        if (toolName && ['Write', 'Edit', 'write', 'edit', 'NotebookEdit'].includes(toolName)) {
+          // toolInput is a formatted string, try to extract file path
+          if (toolInput) files.add(toolInput)
         }
       }
     }
 
-    const costUsd = (tokensUsed / 1_000_000) * (MODEL_PRICING_PER_MTOK[model] ?? 3)
+    // Fallback context percentage from input tokens if no system event had it
+    if (contextPercentage === 0 && inputTokens > 0) {
+      const maxTokens = MODEL_CONTEXT_WINDOW[model] ?? 200_000
+      contextPercentage = Math.round((inputTokens / maxTokens) * 100)
+    }
 
     return {
       turns,
@@ -85,6 +103,8 @@ export function useSessionStats(sessionId: string | undefined, model = 'sonnet')
       tokensUsed,
       costUsd,
       contextPercentage,
+      inputTokens,
+      cacheReadTokens,
     }
-  }, [events])
+  }, [events, model])
 }

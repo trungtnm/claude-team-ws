@@ -118,6 +118,14 @@ export function SessionStatsBar({ session }: SessionStatsBarProps) {
             </a>
           </>
         )}
+
+        {/* Right-aligned context detail */}
+        {(stats.inputTokens > 0 || stats.cacheReadTokens > 0) && (
+          <span className="ml-auto text-ink-disabled font-mono tabular-nums">
+            {formatTokens(stats.inputTokens)} input
+            {stats.cacheReadTokens > 0 && ` + ${formatTokens(stats.cacheReadTokens)} cache`}
+          </span>
+        )}
       </div>
     </div>
   )
