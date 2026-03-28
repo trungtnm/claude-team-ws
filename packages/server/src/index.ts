@@ -15,9 +15,10 @@ import { setAuthUserLookup, authenticate } from './middleware/auth.js'
 import { requireProjectMember } from './middleware/project-access.js'
 import { globalLimiter, authLimiter } from './middleware/rate-limit.js'
 import { initSocketIO, setUserLookup } from './services/socket-manager.js'
-import { BeadsService } from './services/beads-service.js'
 import { BvService } from './services/bv-service.js'
 import { initSessionRunner, stopSessionRunner } from './services/session-runner.js'
+import { initSessionCleanup, stopSessionCleanup } from './services/session-cleanup.js'
+import { configWatcher } from './services/config-watcher.js'
 
 // Routes
 import healthRouter from './routes/health.js'
@@ -25,8 +26,8 @@ import { createAuthRouter } from './routes/auth.js'
 import projectsRouter from './routes/projects.js'
 import membersRouter from './routes/members.js'
 import reposRouter from './routes/repos.js'
-import { createCapturesRouter } from './routes/captures.js'
-import { createEpicsRouter } from './routes/epics.js'
+import capturesRouter from './routes/captures.js'
+import epicsRouter from './routes/epics.js'
 import sessionsRouter from './routes/sessions.js'
 import { createGraphRouter } from './routes/graph.js'
 import rulesRouter from './routes/rules.js'
@@ -34,15 +35,15 @@ import webhooksRouter from './routes/webhooks.js'
 import notificationsRouter from './routes/notifications.js'
 import reviewsRouter from './routes/reviews.js'
 import mailRouter from './routes/mail.js'
-import { createBeadsSyncRouter } from './routes/beads-sync.js'
+// beads-sync removed — app DB is now single source of truth
 import { createActivityRouter } from './routes/activity.js'
+import { createClaudeConfigRouter } from './routes/claude-config.js'
 
 const PORT = parseInt(process.env.PORT || '3000', 10)
 const PROJECT_ROOT = process.env.PROJECT_ROOT || '.'
 
 // ─── Services ────────────────────────────────────────────────────────────────
 
-const beadsService = new BeadsService(PROJECT_ROOT)
 const bvService = new BvService(PROJECT_ROOT)
 
 // ─── Express App ─────────────────────────────────────────────────────────────
@@ -63,7 +64,7 @@ app.use(cors({
   credentials: true,
 }))
 app.use(morgan('dev'))
-app.use(express.json())
+app.use(express.json({ limit: '20mb' })) // Support base64 file attachments in agent messages
 app.use(cookieParser())
 app.use(globalLimiter)
 
@@ -98,16 +99,17 @@ app.use('/api/auth', authLimiter, createAuthRouter({ db, users }))
 app.use('/api/projects', authenticate, projectsRouter)
 app.use('/api/projects/:projectId/members', authenticate, requireProjectMember, membersRouter)
 app.use('/api/projects/:projectId/repos', authenticate, requireProjectMember, reposRouter)
-app.use('/api/projects/:projectId/captures', authenticate, requireProjectMember, createCapturesRouter({ db, beadsService }))
-app.use('/api/projects/:projectId/epics', authenticate, requireProjectMember, createEpicsRouter({ db, beadsService }))
+app.use('/api/projects/:projectId/captures', authenticate, requireProjectMember, capturesRouter)
+app.use('/api/projects/:projectId/epics', authenticate, requireProjectMember, epicsRouter)
 app.use('/api/projects/:projectId/sessions', authenticate, requireProjectMember, sessionsRouter)
 app.use('/api/projects/:projectId/graph', authenticate, requireProjectMember, createGraphRouter({ bvService }))
 app.use('/api/projects/:projectId/rules', authenticate, requireProjectMember, rulesRouter)
 app.use('/api/projects/:projectId/webhooks', authenticate, requireProjectMember, webhooksRouter)
 app.use('/api/projects/:projectId/reviews', authenticate, requireProjectMember, reviewsRouter)
 app.use('/api/projects/:projectId/mail', authenticate, requireProjectMember, mailRouter)
-app.use('/api/projects/:projectId/beads-sync', authenticate, requireProjectMember, createBeadsSyncRouter({ beadsService, projectRoot: PROJECT_ROOT }))
+// beads-sync route removed
 app.use('/api/projects/:projectId/activity', authenticate, requireProjectMember, createActivityRouter({ db }))
+app.use('/api/projects/:projectId/claude-config', authenticate, requireProjectMember, createClaudeConfigRouter({ db }))
 
 // User-scoped routes (no project context)
 app.use('/api/notifications', authenticate, notificationsRouter)
@@ -118,9 +120,10 @@ app.use('/api/notifications', authenticate, notificationsRouter)
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('[ERROR]', err.stack || err.message)
   const status = (err as unknown as { status?: number }).status ?? 500
+  const isProduction = process.env.NODE_ENV === 'production'
   res.status(status).json({
-    error: err.message,
-    ...(process.env.NODE_ENV !== 'production' && { stack: err.stack }),
+    error: isProduction ? 'An internal error occurred' : err.message,
+    ...(!isProduction && { stack: err.stack }),
   })
 })
 
@@ -134,7 +137,7 @@ const clientDist = path.resolve(__dirname, '../../../client/dist')
 app.use(express.static(clientDist))
 
 // SPA fallback — any non-API route serves index.html so client-side routing works
-app.get('*', (_req, res, next) => {
+app.get('{*path}', (_req, res, next) => {
   // Don't intercept API or socket.io routes
   if (_req.path.startsWith('/api') || _req.path.startsWith('/socket.io')) {
     next()
@@ -150,24 +153,30 @@ app.get('*', (_req, res, next) => {
 const httpServer = createServer(app)
 initSocketIO(httpServer)
 
-// Start session runner after Socket.IO is initialized
+// Start session runner and cleanup service after Socket.IO is initialized
 initSessionRunner(PROJECT_ROOT)
+initSessionCleanup()
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('[Server] SIGTERM received — shutting down gracefully')
+  stopSessionCleanup()
   stopSessionRunner()
+  configWatcher.stop()
   httpServer.close()
 })
 
 process.on('SIGINT', () => {
   console.log('[Server] SIGINT received — shutting down gracefully')
+  stopSessionCleanup()
   stopSessionRunner()
+  configWatcher.stop()
   httpServer.close()
 })
 
 httpServer.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`)
+  configWatcher.start()
 })
 
 export { app, httpServer }
