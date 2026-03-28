@@ -3,12 +3,13 @@ import { eq, and } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { knowledgeRules } from '../db/schema.js'
+import { knowledgeRules, projects } from '../db/schema.js'
 import { authenticate, requireRole } from '../middleware/auth.js'
 import { requireProjectMember } from '../middleware/project-access.js'
 import { emitToProject } from '../services/socket-manager.js'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { logError } from '../utils/log-error.js'
+import { ClaudeConfigService } from '../services/claude-config-service.js'
 
 // Mounted at /api/projects/:projectId/rules
 const router: RouterType = Router({ mergeParams: true })
@@ -257,6 +258,58 @@ Return ONLY the JSON object, no markdown fences, no extra text.`
     }
   } catch (err) {
     res.status(500).json({ error: logError('rules/improve', err) })
+  }
+})
+
+// POST /:ruleId/export — export a rule to .claude/rules/ as a markdown file
+router.post('/:ruleId/export', requireRole('pm', 'techlead'), (req, res) => {
+  try {
+    const projectId = param(req, 'projectId')
+    const ruleId = param(req, 'ruleId')
+
+    const rule = db
+      .select()
+      .from(knowledgeRules)
+      .where(and(eq(knowledgeRules.id, ruleId), eq(knowledgeRules.project_id, projectId)))
+      .get()
+
+    if (!rule) {
+      res.status(404).json({ error: 'Rule not found' })
+      return
+    }
+
+    if (rule.maturity !== 'established' && rule.maturity !== 'proven') {
+      res.status(400).json({ error: 'Only established or proven rules can be exported' })
+      return
+    }
+
+    // Resolve project root
+    const project = db.select({ project_root: projects.project_root }).from(projects).where(eq(projects.id, projectId)).get()
+    if (!project) {
+      res.status(404).json({ error: 'Project not found' })
+      return
+    }
+
+    // Generate kebab-case slug from rule text
+    const slug = rule.rule_text
+      .slice(0, 60)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      || `rule-${ruleId.slice(-6)}`
+
+    const configService = new ClaudeConfigService(project.project_root)
+
+    // Build rule content
+    const content = `# ${rule.category}: ${rule.rule_text.slice(0, 80)}\n\n${rule.rule_text}\n\n<!-- Exported from knowledge rule ${ruleId} (maturity: ${rule.maturity}, confidence: ${rule.confidence}) -->\n`
+
+    configService.putRule(slug, content)
+
+    const exportedPath = `.claude/rules/${slug}.md`
+    emitToProject(projectId, 'rule:exported', { id: ruleId, path: exportedPath })
+    res.json({ exported_path: exportedPath, slug })
+  } catch (err) {
+    res.status(500).json({ error: logError('rules/export', err) })
   }
 })
 
