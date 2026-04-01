@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Bot, Plus, Search, Maximize2, X, PanelLeftOpen,
   Loader2, CheckCircle,
@@ -50,11 +50,24 @@ type FilterTab = 'active' | 'history'
 
 export default function AgentsPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [searchQuery, setSearchQuery] = useState('')
   const [activeTab, setActiveTab] = useState<FilterTab>('active')
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [newSessionOpen, setNewSessionOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+
+  // Sync selected session with URL query param for deep linking
+  const selectedSessionId = searchParams.get('session')
+  const setSelectedSessionId = useCallback((id: string | null) => {
+    setSearchParams((prev) => {
+      if (id) {
+        prev.set('session', id)
+      } else {
+        prev.delete('session')
+      }
+      return prev
+    }, { replace: true })
+  }, [setSearchParams])
 
   const { data: allSessions = [], isLoading, error } = useSessionsQuery()
   const cancelMutation = useCancelSessionMutation()
