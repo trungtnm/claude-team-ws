@@ -37,9 +37,9 @@ interface SessionLimits {
 }
 
 const DEFAULT_LIMITS: SessionLimits = {
-  maxInputTokens: 500_000,
-  maxOutputTokens: 100_000,
-  maxToolCalls: 200,
+  maxInputTokens: 2_000_000,
+  maxOutputTokens: 500_000,
+  maxToolCalls: 500,
 }
 
 interface ManagedSession {
@@ -550,8 +550,10 @@ class SessionRunner {
       const usedTokens = inputTokens + cacheCreation + cacheRead
       const usedPercentage = Math.round((usedTokens / contextSize) * 100)
 
-      // Accumulate token usage for cost cap enforcement
-      managed.inputTokens += inputTokens + cacheCreation + cacheRead
+      // Accumulate token usage for cost cap enforcement.
+      // Only count non-cached input_tokens — cache_read (0.1x) and cache_creation (1.25x)
+      // don't represent full-cost API usage and would inflate the cap prematurely.
+      managed.inputTokens += inputTokens
       managed.outputTokens += outputTokens
 
       // Check cost caps
