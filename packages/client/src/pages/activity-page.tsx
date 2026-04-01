@@ -118,12 +118,12 @@ function ActivityFeed({ activity, isLoading }: { activity: ActivityEntry[]; isLo
             <div
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-surface-base mt-0.5 bg-accent"
             >
-              {getInitials(entry.user_name)}
+              {getInitials(entry.userName)}
             </div>
 
             <div className="flex-1 min-w-0">
               <p className="text-sm text-ink">
-                <span className="font-medium">{entry.user_name ?? 'System'}</span>
+                <span className="font-medium">{entry.userName ?? 'System'}</span>
                 <span className="text-ink-muted"> {config.label}</span>
               </p>
               <div className="flex items-center gap-1.5 mt-0.5">
@@ -137,7 +137,7 @@ function ActivityFeed({ activity, isLoading }: { activity: ActivityEntry[]; isLo
               ) : null}
             </div>
 
-            <span className="text-[11px] text-ink-muted shrink-0 mt-0.5">{timeAgo(entry.created_at)}</span>
+            <span className="text-[11px] text-ink-muted shrink-0 mt-0.5">{timeAgo(entry.createdAt)}</span>
           </div>
         )
       })}

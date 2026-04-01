@@ -387,9 +387,9 @@ export interface ActivityEntry {
   id: number
   action: ActivityAction
   details: string | null
-  created_at: number
-  user_id: string | null
-  user_name: string | null
+  createdAt: number
+  userId: string | null
+  userName: string | null
 }
 
 export interface ProjectMetrics {

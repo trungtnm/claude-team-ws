@@ -9,6 +9,14 @@ import { requireProjectMember } from '../middleware/project-access.js'
 import { emitToProject } from '../services/socket-manager.js'
 import { logError } from '../utils/log-error.js'
 
+/** Parse JSON text columns that Drizzle returns as strings */
+function parseCapture(row: Record<string, unknown>) {
+  return {
+    ...row,
+    attachments: typeof row.attachments === 'string' ? JSON.parse(row.attachments) : row.attachments ?? [],
+  }
+}
+
 /** Extract a single string param (Express 5 params can be string | string[]) */
 function param(req: Request, name: string): string {
   const val = req.params[name]
@@ -42,7 +50,7 @@ router.get('/', (req, res) => {
       .offset(offset)
 
     const rows = query.all()
-    res.json({ captures: rows })
+    res.json({ captures: rows.map((r) => parseCapture(r as Record<string, unknown>)) })
   } catch (err) {
     res.status(500).json({ error: logError('captures', err) })
   }
@@ -88,13 +96,17 @@ router.post('/', (req, res) => {
       project_id: projectId,
       user_id: user.id,
       action: 'capture_created',
-      details: JSON.stringify({ capture_id: id }),
+      details: JSON.stringify({
+        capture_id: id,
+        title: parsed.data.text.slice(0, 80),
+      }),
       created_at: now,
     }).run()
 
     const capture = db.select().from(captures).where(eq(captures.id, id)).get()
-    emitToProject(projectId, 'capture:created', capture)
-    res.status(201).json({ capture })
+    const parsed_capture = capture ? parseCapture(capture as Record<string, unknown>) : capture
+    emitToProject(projectId, 'capture:created', parsed_capture)
+    res.status(201).json({ capture: parsed_capture })
   } catch (err) {
     res.status(500).json({ error: logError('captures', err) })
   }
@@ -145,8 +157,9 @@ router.patch('/:captureId', requireRole('pm', 'techlead'), (req, res) => {
     db.update(captures).set(updates).where(eq(captures.id, captureId)).run()
 
     const updated = db.select().from(captures).where(eq(captures.id, captureId)).get()
-    emitToProject(projectId, 'capture:updated', updated)
-    res.json({ capture: updated })
+    const parsed_capture = updated ? parseCapture(updated as Record<string, unknown>) : updated
+    emitToProject(projectId, 'capture:updated', parsed_capture)
+    res.json({ capture: parsed_capture })
   } catch (err) {
     res.status(500).json({ error: logError('captures', err) })
   }

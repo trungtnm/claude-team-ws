@@ -135,7 +135,10 @@ router.post('/', (req, res) => {
       project_id: projectId,
       user_id: user.id,
       action: 'session_started',
-      details: JSON.stringify({ session_id: id }),
+      details: JSON.stringify({
+        session_id: id,
+        title: name || prompt.slice(0, 80),
+      }),
       created_at: now,
     }).run()
 
