@@ -29,6 +29,7 @@ export function AgentStreamView({ sessionId }: AgentStreamViewProps) {
 
   const isRunning = session?.status === 'running'
   const isWaitingInput = session?.status === 'waiting_input'
+  const isTerminal = session?.status === 'completed' || session?.status === 'failed' || session?.status === 'cancelled'
 
   // ── Check if scrolled to bottom ────────────────────────────────────────
 
@@ -89,6 +90,18 @@ export function AgentStreamView({ sessionId }: AgentStreamViewProps) {
     setHasNewBelow(false)
   }, [])
 
+  // Detect if the last event signals the session has stopped (handles race condition
+  // where the event arrives before the session status update via Socket.IO)
+  const lastEvent = events.at(-1)
+  const lastEventIsTerminal = lastEvent != null && (
+    lastEvent.type === 'result' ||
+    lastEvent.type === 'error' ||
+    (lastEvent.type === 'system' && /token.?limit|stopped|terminated|exceeded/i.test(lastEvent.content))
+  )
+
+  // Don't show thinking indicator if the last event or session status signals termination
+  const showThinking = isRunning && !isTerminal && !lastEventIsTerminal
+
   // Find the last AskUserQuestion event to attach inline answer UI
   const lastAskEventId = events
     .filter((e) => e.type === 'tool_use' && e.toolName === 'AskUserQuestion')
@@ -107,7 +120,7 @@ export function AgentStreamView({ sessionId }: AgentStreamViewProps) {
         className="h-full overflow-y-auto scroll-smooth"
       >
         <div className="flex min-h-full flex-col justify-end gap-3 p-4">
-          {events.length === 0 && isRunning && (
+          {events.length === 0 && showThinking && (
             <div className="flex items-center gap-2 pl-1 pt-4">
               <span className="h-4 w-1.5 rounded-sm bg-accent animate-cursor" />
               <span className="text-xs text-ink-muted">Waiting for agent output...</span>
@@ -134,7 +147,7 @@ export function AgentStreamView({ sessionId }: AgentStreamViewProps) {
             )
           })}
 
-          {isRunning && events.length > 0 && (
+          {showThinking && events.length > 0 && (
             <div className="flex items-center gap-1 pl-1 pt-1">
               <span className="h-4 w-1.5 rounded-sm bg-accent animate-cursor" />
               <span className="text-xs text-ink-muted">Agent is thinking...</span>

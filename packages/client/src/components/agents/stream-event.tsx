@@ -100,6 +100,24 @@ export function StreamEvent({ event, question, isWaitingInput, onAnswer }: Strea
   const [expanded, setExpanded] = useState(false)
 
   if (event.type === 'system') {
+    // Hide context window events — data is shown in the stats bar instead
+    if (event.contextWindow || /^Context:\s*\d+%/i.test(event.content)) {
+      return null
+    }
+    // Hide session idle messages — the input placeholder and status badge convey this
+    if (/session idle/i.test(event.content)) {
+      return null
+    }
+    // Show token limit / session stopped events as warnings
+    const isStopEvent = /token.?limit|stopped|terminated|exceeded|context.?limit/i.test(event.content)
+    if (isStopEvent) {
+      return (
+        <div className="flex items-start gap-2 rounded-[var(--radius-md)] border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
+          <span className="text-xs text-amber-400">{event.content}</span>
+        </div>
+      )
+    }
     return (
       <div className="flex items-start gap-2 rounded-[var(--radius-md)] bg-surface-elevated px-3 py-2">
         <Terminal className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-muted" />
