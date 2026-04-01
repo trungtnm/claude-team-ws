@@ -158,7 +158,7 @@ export function useInterruptSessionMutation() {
     mutationFn: (sessionId: string) => sessionsApi.interrupt(projectId, sessionId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all(projectId) })
-      toast.success('Agent interrupted — session idle')
+      // No toast — the status badge and input placeholder update seamlessly
     },
     onError: (err) => {
       toast.error(`Failed to interrupt: ${err instanceof Error ? err.message : 'Unknown error'}`)
@@ -283,9 +283,15 @@ export function parseSessionEvent(event: SessionEvent): ParsedStreamEvent {
   } catch {
     data = { content: String(event.data) }
   }
+  // User messages are stored as event_type='system' with data.type='user_message'
+  // Override the parsed type so they render with the correct user message style
+  const resolvedType = event.eventType === 'system' && data.type === 'user_message'
+    ? 'user_message'
+    : event.eventType
+
   return {
     id: event.id,
-    type: event.eventType,
+    type: resolvedType,
     content: (data.content as string) ?? '',
     toolName: data.toolName as string | undefined,
     toolInput: data.toolInput as string | undefined,

@@ -160,13 +160,15 @@ export function StreamEvent({ event, question, isWaitingInput, onAnswer }: Strea
     const fileAttachments = event.attachments?.filter((a) => a.type === 'file') ?? []
 
     return (
-      <div className="rounded-[var(--radius-md)] border border-accent/20 bg-accent-subtle px-3 py-2">
-        <div className="flex items-start gap-2">
-          <User className="mt-1 h-3.5 w-3.5 shrink-0 text-accent" />
-          <div className="min-w-0 flex-1">
-            <Prose>{event.content.split('\n\n')[0]}</Prose>
+      <div className="flex justify-end">
+        <div className="max-w-[80%] rounded-[var(--radius-md)] border border-accent/20 bg-accent-subtle px-3 py-2">
+          <div className="flex items-start gap-2">
+            <User className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
+            <div className="min-w-0 flex-1">
+              <span className="text-[10px] font-medium text-accent mb-0.5 block">You</span>
+              <Prose>{event.content.split('\n\n')[0]}</Prose>
+            </div>
           </div>
-        </div>
 
         {/* Image thumbnails */}
         {imageAttachments.length > 0 && (
@@ -196,6 +198,7 @@ export function StreamEvent({ event, question, isWaitingInput, onAnswer }: Strea
             ))}
           </div>
         )}
+        </div>
       </div>
     )
   }
