@@ -178,6 +178,42 @@ router.post('/:repoName/pull', async (req, res) => {
   }
 })
 
+// POST /:repoName/checkout — switch branch
+router.post('/:repoName/checkout', async (req, res) => {
+  try {
+    const projectId = param(req, 'projectId')
+    const repoName = param(req, 'repoName')
+    const { branch } = req.body as { branch?: string }
+
+    if (!branch || typeof branch !== 'string') {
+      res.status(400).json({ error: 'Branch name required' })
+      return
+    }
+
+    const repo = db
+      .select()
+      .from(repos)
+      .where(and(eq(repos.project_id, projectId), eq(repos.name, repoName)))
+      .get()
+
+    if (!repo) {
+      res.status(404).json({ error: 'Repo not found' })
+      return
+    }
+
+    if (repo.status !== 'ready') {
+      res.status(400).json({ error: `Repo is not ready (status: ${repo.status})` })
+      return
+    }
+
+    await gitService.checkout(branch, repo.path)
+    emitToProject(projectId, 'repo:checkout', { repo_id: repo.id, name: repo.name, branch })
+    res.json({ branch })
+  } catch (err) {
+    res.status(500).json({ error: logError('repos', err) })
+  }
+})
+
 // DELETE /:repoName — remove repo
 router.delete('/:repoName', requireRole('pm', 'techlead'), (req, res) => {
   try {

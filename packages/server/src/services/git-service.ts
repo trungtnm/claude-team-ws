@@ -56,6 +56,10 @@ export class GitService {
     }))
   }
 
+  async checkout(branchName: string, repoPath: string): Promise<void> {
+    await this.exec(['checkout', branchName], repoPath)
+  }
+
   async checkoutNewBranch(branchName: string, repoPath: string): Promise<void> {
     await this.exec(['checkout', '-b', branchName], repoPath)
   }

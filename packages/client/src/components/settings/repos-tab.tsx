@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Package, MoreVertical, Plus, GitBranch, ArrowDownToLine, Terminal, Trash2, GitFork, Copy, RefreshCw, Loader2 } from 'lucide-react'
+import { Package, MoreVertical, Plus, GitBranch, ArrowDownToLine, Trash2, GitFork, Copy, RefreshCw, Loader2, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -27,27 +27,58 @@ function RepoCard({ repo }: { repo: Repo }) {
   const displayUrl = repo.gitUrl || repo.path
   const pullRepo = usePullRepo()
   const removeRepo = useRemoveRepo()
+  const [showBranches, setShowBranches] = useState(false)
+  const [branches, setBranches] = useState<Array<{ name: string; isDefault: boolean }>>([])
+  const [branchesLoading, setBranchesLoading] = useState(false)
+  const [confirmRemove, setConfirmRemove] = useState(false)
 
   const handlePull = () => {
     pullRepo.mutate(repo.name, {
-      onSuccess: () => toast.success(`Pulled latest for ${repo.name}`),
+      onSuccess: (data) => {
+        const result = data as { result: string; newCommits: number }
+        toast.success(result.newCommits > 0
+          ? `Pulled ${result.newCommits} new commit(s) for ${repo.name}`
+          : `${repo.name} is up to date`)
+      },
       onError: (err) => toast.error(err.message),
     })
   }
 
-  const handleViewBranches = () => {
-    toast.info(`Viewing branches for ${repo.name}`)
+  const handleViewBranches = async () => {
+    setBranchesLoading(true)
+    try {
+      const { reposApi } = await import('@/lib/resources')
+      const data = await reposApi.branches(repo.projectId, repo.name)
+      setBranches(data.branches ?? [])
+      setShowBranches(true)
+    } catch (err) {
+      toast.error(`Failed to fetch branches: ${err instanceof Error ? err.message : 'Unknown'}`)
+    } finally {
+      setBranchesLoading(false)
+    }
   }
 
-  const handleOpenTerminal = () => {
-    toast.info(`Opening terminal at ${repo.path}`)
+  const handleSwitchBranch = async (branchName: string) => {
+    try {
+      const { api } = await import('@/lib/api')
+      await api.post(`/projects/${repo.projectId}/repos/${repo.name}/checkout`, { branch: branchName })
+      toast.success(`Switched ${repo.name} to ${branchName}`)
+      setShowBranches(false)
+    } catch (err) {
+      toast.error(`Failed to switch branch: ${err instanceof Error ? err.message : 'Unknown'}`)
+    }
   }
 
   const handleRemove = () => {
+    if (!confirmRemove) {
+      setConfirmRemove(true)
+      return
+    }
     removeRepo.mutate(repo.name, {
       onSuccess: () => toast.success(`Removed repository ${repo.name}`),
       onError: (err) => toast.error(err.message),
     })
+    setConfirmRemove(false)
   }
 
   const handleCopyPath = () => {
@@ -55,9 +86,8 @@ function RepoCard({ repo }: { repo: Repo }) {
     toast.success(`Path copied: ${repo.path}`)
   }
 
-  const handleSwitchBranch = () => {
-    toast.info('Branch switcher coming soon')
-  }
+  // Show warning badge if repo claims ready but might not exist
+  const showPathWarning = repo.status === 'ready' && repo.linkMode === 'clone'
 
   return (
     <Card className="p-4">
@@ -83,29 +113,25 @@ function RepoCard({ repo }: { repo: Repo }) {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={handlePull} disabled={pullRepo.isPending}>
-              <ArrowDownToLine className="h-4 w-4" />
+              {pullRepo.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowDownToLine className="h-4 w-4" />}
               Pull latest
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleViewBranches}>
-              <GitFork className="h-4 w-4" />
+            <DropdownMenuItem onClick={handleViewBranches} disabled={branchesLoading}>
+              {branchesLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitFork className="h-4 w-4" />}
               View branches
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleSwitchBranch}>
-              <GitBranch className="h-4 w-4" />
-              Switch branch
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleCopyPath}>
               <Copy className="h-4 w-4" />
               Copy path
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleOpenTerminal}>
-              <Terminal className="h-4 w-4" />
-              Open in terminal
-            </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleRemove} className="text-error hover:text-error" disabled={removeRepo.isPending}>
+            <DropdownMenuItem
+              onClick={handleRemove}
+              className="text-error hover:text-error"
+              disabled={removeRepo.isPending}
+            >
               <Trash2 className="h-4 w-4" />
-              Remove
+              {confirmRemove ? 'Confirm remove?' : 'Remove'}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -117,7 +143,35 @@ function RepoCard({ repo }: { repo: Repo }) {
           {repo.defaultBranch}
         </span>
         <span>{linkModeLabel}</span>
+        {showPathWarning && (
+          <span className="flex items-center gap-1 text-amber-500">
+            <AlertTriangle className="h-3 w-3" />
+            Verify path exists
+          </span>
+        )}
       </div>
+
+      {/* Branch list panel */}
+      {showBranches && branches.length > 0 && (
+        <div className="mt-3 rounded-[var(--radius-md)] border border-edge bg-surface-base p-2 space-y-0.5">
+          <div className="flex items-center justify-between px-2 pb-1">
+            <span className="text-[11px] font-medium text-ink-secondary">Branches ({branches.length})</span>
+            <button type="button" onClick={() => setShowBranches(false)} className="text-[10px] text-ink-muted hover:text-ink-secondary cursor-pointer">Close</button>
+          </div>
+          {branches.map((b) => (
+            <button
+              key={b.name}
+              type="button"
+              onClick={() => handleSwitchBranch(b.name)}
+              className="flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-xs text-ink-secondary hover:bg-surface-elevated transition-colors cursor-pointer"
+            >
+              <GitBranch className="h-3 w-3 shrink-0" />
+              <span className="truncate">{b.name}</span>
+              {b.isDefault && <Badge variant="default" className="ml-auto text-[9px] px-1 py-0">default</Badge>}
+            </button>
+          ))}
+        </div>
+      )}
     </Card>
   )
 }
