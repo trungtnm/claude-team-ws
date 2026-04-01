@@ -1,4 +1,4 @@
-import { ArrowRight, CheckCircle2, Clock, X } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Clock, FileText, Paperclip, X } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import type { Capture } from '@/types'
 import { cn } from '@/lib/utils'
@@ -77,6 +77,40 @@ export function CaptureCard({
         <div className="flex-1 min-w-0">
           {/* Full text */}
           <p className="text-sm text-ink leading-relaxed">{capture.text}</p>
+
+          {/* Attachment previews */}
+          {capture.attachments?.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {capture.attachments.filter((a) => a.mimeType.startsWith('image/')).map((att, i) => (
+                <a key={i} href={att.url} target="_blank" rel="noopener noreferrer" className="group relative">
+                  <img
+                    src={att.url}
+                    alt={att.filename}
+                    className="h-16 max-w-32 rounded-[var(--radius-sm)] border border-edge object-cover hover:border-accent transition-colors"
+                  />
+                  <span className="absolute bottom-0.5 left-0.5 rounded bg-black/60 px-1 py-0.5 text-[8px] text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                    {att.filename}
+                  </span>
+                </a>
+              ))}
+              {capture.attachments.filter((a) => !a.mimeType.startsWith('image/')).map((att, i) => (
+                <a
+                  key={i}
+                  href={att.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-edge bg-surface-elevated px-2 py-1 text-xs text-ink-secondary hover:border-accent transition-colors"
+                >
+                  <FileText className="h-3 w-3" />
+                  {att.filename}
+                </a>
+              ))}
+              <span className="flex items-center gap-0.5 text-[10px] text-ink-disabled">
+                <Paperclip className="h-3 w-3" />
+                {capture.attachments.length}
+              </span>
+            </div>
+          )}
 
           {/* Author row */}
           <div className="mt-2 flex items-center gap-2">

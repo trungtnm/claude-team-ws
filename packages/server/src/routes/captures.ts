@@ -48,8 +48,15 @@ router.get('/', (req, res) => {
   }
 })
 
+const captureAttachmentSchema = z.object({
+  filename: z.string().max(500),
+  mimeType: z.string().max(200),
+  url: z.string().max(2000),
+})
+
 const createCaptureSchema = z.object({
   text: z.string().min(1).max(5000),
+  attachments: z.array(captureAttachmentSchema).max(10).optional(),
 })
 
 // POST / — create capture
@@ -72,6 +79,7 @@ router.post('/', (req, res) => {
       user_id: user.id,
       text: parsed.data.text,
       status: 'pending',
+      attachments: JSON.stringify(parsed.data.attachments ?? []),
       created_at: now,
     }).run()
 

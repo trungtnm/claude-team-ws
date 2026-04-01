@@ -83,6 +83,12 @@ export interface Member {
   avatarUrl: string | null
 }
 
+export interface CaptureAttachment {
+  filename: string
+  mimeType: string
+  url: string
+}
+
 export interface Capture {
   id: string
   projectId: string
@@ -90,6 +96,7 @@ export interface Capture {
   text: string
   status: 'pending' | 'triaged' | 'deferred' | 'dismissed'
   triageResult: string | null
+  attachments: CaptureAttachment[]
   createdAt: number
   triagedAt: number | null
   triagedBy: string | null

@@ -74,6 +74,7 @@ export const captures = sqliteTable('captures', {
   text: text('text').notNull(),
   status: text('status', { enum: ['pending', 'triaged', 'deferred', 'dismissed'] }).notNull().default('pending'),
   triage_result: text('triage_result'),
+  attachments: text('attachments').notNull().default('[]'), // JSON: [{filename, mimeType, url}]
   created_at: integer('created_at').notNull().default(sql`(unixepoch())`),
   triaged_at: integer('triaged_at'),
   triaged_by: text('triaged_by').references(() => users.id),
@@ -125,6 +126,9 @@ export const sessions = sqliteTable('sessions', {
   exit_code: integer('exit_code'),
   pr_url: text('pr_url'),
   pr_status: text('pr_status', { enum: ['pending_review', 'changes_requested', 'approved', 'merged'] }),
+  input_tokens_used: integer('input_tokens_used').notNull().default(0),
+  output_tokens_used: integer('output_tokens_used').notNull().default(0),
+  tool_calls_used: integer('tool_calls_used').notNull().default(0),
   started_at: integer('started_at'),
   finished_at: integer('finished_at'),
   created_at: integer('created_at').notNull().default(sql`(unixepoch())`),

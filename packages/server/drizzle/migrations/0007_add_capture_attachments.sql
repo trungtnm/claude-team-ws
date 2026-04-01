@@ -1,0 +1,1 @@
+ALTER TABLE captures ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]';

@@ -45,6 +45,7 @@ export function createTestDb(): { db: BetterSQLite3Database<typeof schema>; sqli
       id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
       user_id TEXT NOT NULL REFERENCES users(id), text TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending', triage_result TEXT,
+      attachments TEXT NOT NULL DEFAULT '[]',
       created_at INTEGER NOT NULL DEFAULT (unixepoch()),
       triaged_at INTEGER, triaged_by TEXT REFERENCES users(id)
     );
@@ -65,6 +66,9 @@ export function createTestDb(): { db: BetterSQLite3Database<typeof schema>; sqli
       permission_mode TEXT NOT NULL DEFAULT 'default',
       prompt TEXT NOT NULL, target_dir TEXT,
       pid INTEGER, exit_code INTEGER, pr_url TEXT, pr_status TEXT,
+      input_tokens_used INTEGER NOT NULL DEFAULT 0,
+      output_tokens_used INTEGER NOT NULL DEFAULT 0,
+      tool_calls_used INTEGER NOT NULL DEFAULT 0,
       started_at INTEGER, finished_at INTEGER,
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
