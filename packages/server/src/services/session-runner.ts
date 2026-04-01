@@ -1011,6 +1011,27 @@ class SessionRunner {
 
   // ─── Event Storage & Emission ─────────────────────────────────────────
 
+  /** Redact sensitive patterns from text before storage/emission */
+  private static redactSensitive(text: string): string {
+    return text
+      .replace(/Bearer\s+[A-Za-z0-9\-._~+/]+=*/g, 'Bearer [REDACTED]')
+      .replace(/(CTW_API_KEY|ADMIN_API_KEY|JWT_SECRET|ANTHROPIC_API_KEY|CTW_BOT_API_KEY)=\S+/g, '$1=[REDACTED]')
+      .replace(/(?:api[_-]?key|secret|token|password|authorization)\s*[:=]\s*\S+/gi, '[REDACTED]')
+  }
+
+  /** Recursively redact string values in event data */
+  private static redactData(data: Record<string, unknown>): Record<string, unknown> {
+    const result: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(data)) {
+      if (typeof value === 'string') {
+        result[key] = SessionRunner.redactSensitive(value)
+      } else {
+        result[key] = value
+      }
+    }
+    return result
+  }
+
   private pushEvent(
     managed: ManagedSession,
     eventType: string,
@@ -1018,24 +1039,27 @@ class SessionRunner {
   ): void {
     const now = Math.floor(Date.now() / 1000)
 
+    // Redact sensitive values before storage
+    const safeData = SessionRunner.redactData(data)
+
     // Insert into DB
     const result = db.insert(sessionEvents).values({
       session_id: managed.sessionId,
       event_type: eventType as typeof sessionEvents.$inferInsert['event_type'],
-      data: JSON.stringify(data),
+      data: JSON.stringify(safeData),
       created_at: now,
     }).run()
 
     const eventId = Number(result.lastInsertRowid)
 
-    // Emit via Socket.IO
+    // Emit via Socket.IO (use redacted data)
     emitToSession(managed.sessionId, 'session:event', {
       sessionId: managed.sessionId,
       event: {
         id: eventId,
         sessionId: managed.sessionId,
         eventType,
-        data,
+        data: safeData,
         createdAt: now,
       },
     })

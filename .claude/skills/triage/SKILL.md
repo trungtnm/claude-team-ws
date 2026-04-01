@@ -30,15 +30,15 @@ Accepts a comma-separated list of capture IDs (the `cap_xxx` database IDs):
 
 ## Configuration
 
-The skill reads server connection details from environment variables. These MUST be set before the agent session starts:
+The session runner **pre-injects** these environment variables into the agent session automatically. They are already set — do NOT discover, echo, or log them:
 
 ```
-CTW_SERVER_URL=http://localhost:3000    # Server base URL
-CTW_API_KEY=ctw-dev-key-change-me       # API key for Bearer auth
-CTW_PROJECT_ID=proj_xxx                 # Current project ID
+CTW_SERVER_URL    # Server base URL (pre-set)
+CTW_API_KEY       # API key for Bearer auth (pre-set)
+CTW_PROJECT_ID    # Current project ID (pre-set)
 ```
 
-The session runner is responsible for injecting these env vars when spawning the Claude Code agent.
+**SECURITY: NEVER run `echo $CTW_API_KEY`, `env | grep`, `printenv`, or any command that displays these values.** They are pre-configured and ready to use directly in curl commands. Exposing API keys in the agent stream is a security violation.
 
 ## API Reference
 
@@ -240,6 +240,7 @@ If any of the required env vars (`CTW_SERVER_URL`, `CTW_API_KEY`, `CTW_PROJECT_I
 
 ## Rules
 
+- **NEVER echo, log, or display API keys or auth tokens** — `CTW_API_KEY`, `ADMIN_API_KEY`, `ANTHROPIC_API_KEY`, Bearer tokens, and any secrets must never appear in agent output. Use them directly in curl commands without printing.
 - **NEVER modify code, create files, or make commits** — triage ONLY produces epics (plans) and updates capture statuses. All code changes happen later when a worker agent picks up the epic.
 - **Process only targeted captures** — if IDs are provided, only triage those specific captures. If no IDs, fetch and process all pending captures.
 - **Update captures via API after each action** — use PATCH to set status and triage_result so the UI reflects changes in real-time

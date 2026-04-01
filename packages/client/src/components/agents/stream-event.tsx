@@ -15,6 +15,24 @@ import {
 import { cn } from '@/lib/utils'
 import type { ParsedStreamEvent } from '@/hooks/use-sessions'
 
+/** Redact sensitive values from stream text (defense in depth) */
+const SENSITIVE_PATTERNS = [
+  // API keys and Bearer tokens
+  /Bearer\s+[A-Za-z0-9\-._~+/]+=*/g,
+  // Common env var values leaked via echo/printenv
+  /(?:CTW_API_KEY|ADMIN_API_KEY|JWT_SECRET|ANTHROPIC_API_KEY|API_KEY)=\S+/g,
+  // Explicit key-value patterns from env dumps
+  /(?:api[_-]?key|secret|token|password|authorization)\s*[:=]\s*\S+/gi,
+]
+
+function redactSensitive(text: string): string {
+  let result = text
+  for (const pattern of SENSITIVE_PATTERNS) {
+    result = result.replace(pattern, '[REDACTED]')
+  }
+  return result
+}
+
 interface SessionQuestion {
   text: string
   options: string[]
@@ -206,13 +224,13 @@ export function StreamEvent({ event, question, isWaitingInput, onAnswer }: Strea
           <Wrench className="h-3.5 w-3.5 shrink-0 text-accent" />
           <span className="text-xs font-medium text-ink-secondary">{event.toolName}</span>
           {event.toolInput && (
-            <span className="truncate text-xs font-mono text-ink-muted">{event.toolInput}</span>
+            <span className="truncate text-xs font-mono text-ink-muted">{redactSensitive(event.toolInput)}</span>
           )}
         </button>
         {expanded && event.toolResult && (
           <div className="border-t border-edge px-3 py-2 max-h-80 overflow-auto">
             <pre className="whitespace-pre-wrap font-mono text-xs text-ink-muted">
-              {event.toolResult}
+              {redactSensitive(event.toolResult)}
             </pre>
           </div>
         )}
