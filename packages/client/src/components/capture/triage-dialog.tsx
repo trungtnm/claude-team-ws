@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Bot, CheckCircle2, Loader2, Play, ArrowRight,
-  MessageSquare, Zap,
+  MessageSquare, Zap, ExternalLink, MinusCircle,
 } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -154,7 +154,8 @@ export function TriageDialog({ captures, open, onOpenChange, onTriaged }: Triage
     navigate('/agents')
   }, [captures, onTriaged, onOpenChange, navigate])
 
-  // Extract assistant messages for processing display
+  // Extract assistant messages for processing display, filtering out noise
+  const NOISE_PATTERN = /^Context:\s*\d+(\.\d+)?%|session idle|Session started|Initialized\.|^\s*$/i
   const events = eventsData?.events ?? []
   const assistantMessages = events
     .filter((e: SessionEvent) => e.eventType === 'assistant' || e.eventType === 'system')
@@ -162,7 +163,19 @@ export function TriageDialog({ captures, open, onOpenChange, onTriaged }: Triage
       const data = typeof e.data === 'string' ? safeParseJSON(e.data) : e.data as Record<string, unknown>
       return (data?.content as string) ?? ''
     })
-    .filter(Boolean)
+    .filter((msg) => msg && !NOISE_PATTERN.test(msg))
+
+  const handleRunInBackground = useCallback(() => {
+    // Close dialog without stopping the session — it continues running
+    onOpenChange(false)
+    toast.info('Triage running in background — you\'ll be notified when complete')
+  }, [onOpenChange])
+
+  const handleOpenSession = useCallback(() => {
+    if (!sessionId) return
+    onOpenChange(false)
+    navigate(`/agents/${sessionId}`)
+  }, [sessionId, onOpenChange, navigate])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -275,6 +288,21 @@ export function TriageDialog({ captures, open, onOpenChange, onTriaged }: Triage
                   <Loader2 className="h-4 w-4 shrink-0 animate-spin text-accent" />
                   <span className="text-sm text-ink">Processing...</span>
                 </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between px-2">
+                  <Button variant="ghost" size="sm" className="gap-1.5 text-ink-muted" onClick={handleRunInBackground}>
+                    <MinusCircle className="h-3.5 w-3.5" />
+                    Run in background
+                  </Button>
+                  {sessionId && (
+                    <Button variant="outline" size="sm" className="gap-1.5" onClick={handleOpenSession}>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Open session
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -341,6 +369,21 @@ export function TriageDialog({ captures, open, onOpenChange, onTriaged }: Triage
                     )}
                     Continue
                   </Button>
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <Button variant="ghost" size="sm" className="gap-1.5 text-ink-muted" onClick={handleRunInBackground}>
+                    <MinusCircle className="h-3.5 w-3.5" />
+                    Run in background
+                  </Button>
+                  {sessionId && (
+                    <Button variant="outline" size="sm" className="gap-1.5" onClick={handleOpenSession}>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Open session
+                    </Button>
+                  )}
                 </div>
               </>
             )}
