@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { ArrowRight, CheckCircle2, Clock, FileText, Paperclip, X } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
-import type { Capture } from '@/types'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
+import type { Capture, CaptureAttachment } from '@/types'
 import { cn } from '@/lib/utils'
 
 interface CaptureCardProps {
@@ -48,6 +50,7 @@ export function CaptureCard({
   onToggleSelect,
   highlighted = false,
 }: CaptureCardProps) {
+  const [previewImage, setPreviewImage] = useState<CaptureAttachment | null>(null)
   const user = capture.user
   const ageBorder = getAgeBorderClass(capture.createdAt)
 
@@ -82,7 +85,12 @@ export function CaptureCard({
           {capture.attachments?.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-2">
               {capture.attachments.filter((a) => a.mimeType.startsWith('image/')).map((att, i) => (
-                <a key={i} href={att.url} target="_blank" rel="noopener noreferrer" className="group relative">
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setPreviewImage(att)}
+                  className="group relative cursor-pointer"
+                >
                   <img
                     src={att.url}
                     alt={att.filename}
@@ -91,7 +99,7 @@ export function CaptureCard({
                   <span className="absolute bottom-0.5 left-0.5 rounded bg-black/60 px-1 py-0.5 text-[8px] text-white opacity-0 group-hover:opacity-100 transition-opacity">
                     {att.filename}
                   </span>
-                </a>
+                </button>
               ))}
               {capture.attachments.filter((a) => !a.mimeType.startsWith('image/')).map((att, i) => (
                 <a
@@ -185,6 +193,22 @@ export function CaptureCard({
           </div>
         ) : null}
       </div>
+
+      {/* Image preview dialog */}
+      {previewImage && (
+        <Dialog open onOpenChange={() => setPreviewImage(null)}>
+          <DialogContent className="max-w-4xl max-h-[90vh] p-2 overflow-hidden">
+            <div className="flex flex-col items-center gap-2">
+              <img
+                src={previewImage.url}
+                alt={previewImage.filename}
+                className="max-h-[80vh] max-w-full rounded-[var(--radius-md)] object-contain"
+              />
+              <span className="text-xs text-ink-muted">{previewImage.filename}</span>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }
