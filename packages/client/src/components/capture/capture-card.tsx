@@ -31,6 +31,24 @@ function getInitials(name: string): string {
     .slice(0, 2)
 }
 
+/** Convert a data URI to a Blob URL and open it in a new tab for native preview */
+function openDataUriInNewTab(dataUri: string, mimeType: string) {
+  try {
+    const byteString = atob(dataUri.split(',')[1])
+    const ab = new ArrayBuffer(byteString.length)
+    const ia = new Uint8Array(ab)
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i)
+    }
+    const blob = new Blob([ab], { type: mimeType })
+    const blobUrl = URL.createObjectURL(blob)
+    window.open(blobUrl, '_blank')
+  } catch {
+    // Fallback: open data URI directly
+    window.open(dataUri, '_blank')
+  }
+}
+
 /** Deterministic color from user id */
 function getUserColor(id: string): string {
   const colors = ['#f59e0b', '#3b82f6', '#22c55e', '#a855f7', '#ec4899', '#14b8a6', '#f97316']
@@ -102,16 +120,15 @@ export function CaptureCard({
                 </button>
               ))}
               {capture.attachments.filter((a) => !a.mimeType.startsWith('image/')).map((att, i) => (
-                <a
+                <button
                   key={i}
-                  href={att.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-edge bg-surface-elevated px-2 py-1 text-xs text-ink-secondary hover:border-accent transition-colors"
+                  type="button"
+                  onClick={() => openDataUriInNewTab(att.url, att.mimeType)}
+                  className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-edge bg-surface-elevated px-2 py-1 text-xs text-ink-secondary hover:border-accent transition-colors cursor-pointer"
                 >
                   <FileText className="h-3 w-3" />
                   {att.filename}
-                </a>
+                </button>
               ))}
               <span className="flex items-center gap-0.5 text-[10px] text-ink-disabled">
                 <Paperclip className="h-3 w-3" />
