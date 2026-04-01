@@ -1,13 +1,13 @@
-import { ArrowRight, Clock, X } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Clock, X } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import type { Capture } from '@/types'
 import { cn } from '@/lib/utils'
 
 interface CaptureCardProps {
   capture: Capture
-  onTriage: (capture: Capture) => void
-  onDefer: (id: string) => void
-  onDismiss: (id: string) => void
+  onTriage?: (capture: Capture) => void
+  onDefer?: (id: string) => void
+  onDismiss?: (id: string) => void
   selected?: boolean
   onToggleSelect?: (id: string) => void
   highlighted?: boolean
@@ -99,44 +99,57 @@ export function CaptureCard({
           </div>
         </div>
 
-        {/* Actions - always visible */}
-        <div className="flex items-start gap-1 shrink-0">
-          <button
-            type="button"
-            onClick={() => onTriage(capture)}
-            className={cn(
-              'flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1',
-              'text-xs font-medium text-accent bg-accent-muted',
-              'transition-colors hover:bg-accent/20 cursor-pointer',
+        {/* Actions - only shown when callbacks provided */}
+        {(onTriage || onDefer || onDismiss) ? (
+          <div className="flex items-start gap-1 shrink-0">
+            {onTriage && (
+              <button
+                type="button"
+                onClick={() => onTriage(capture)}
+                className={cn(
+                  'flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1',
+                  'text-xs font-medium text-accent bg-accent-muted',
+                  'transition-colors hover:bg-accent/20 cursor-pointer',
+                )}
+              >
+                <ArrowRight className="h-3.5 w-3.5" />
+                Triage
+              </button>
             )}
-          >
-            <ArrowRight className="h-3.5 w-3.5" />
-            Triage
-          </button>
-          <button
-            type="button"
-            onClick={() => onDefer(capture.id)}
-            className={cn(
-              'flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1',
-              'text-xs text-ink-muted',
-              'transition-colors hover:bg-surface-elevated hover:text-ink-secondary cursor-pointer',
+            {onDefer && (
+              <button
+                type="button"
+                onClick={() => onDefer(capture.id)}
+                className={cn(
+                  'flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1',
+                  'text-xs text-ink-muted',
+                  'transition-colors hover:bg-surface-elevated hover:text-ink-secondary cursor-pointer',
+                )}
+              >
+                <Clock className="h-3.5 w-3.5" />
+                Defer
+              </button>
             )}
-          >
-            <Clock className="h-3.5 w-3.5" />
-            Defer
-          </button>
-          <button
-            type="button"
-            onClick={() => onDismiss(capture.id)}
-            className={cn(
-              'flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1',
-              'text-xs text-ink-muted',
-              'transition-colors hover:bg-error/10 hover:text-error cursor-pointer',
+            {onDismiss && (
+              <button
+                type="button"
+                onClick={() => onDismiss(capture.id)}
+                className={cn(
+                  'flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1',
+                  'text-xs text-ink-muted',
+                  'transition-colors hover:bg-error/10 hover:text-error cursor-pointer',
+                )}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             )}
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
+          </div>
+        ) : capture.status === 'triaged' && capture.triageResult ? (
+          <div className="flex items-center gap-1.5 shrink-0">
+            <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+            <span className="text-xs text-success truncate max-w-48">{capture.triageResult}</span>
+          </div>
+        ) : null}
       </div>
     </div>
   )

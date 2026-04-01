@@ -11,7 +11,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import type { Capture } from '@/types'
 
-type FilterTab = 'pending' | 'deferred' | 'all'
+type FilterTab = 'pending' | 'deferred' | 'completed' | 'all'
 
 export function CapturesPage() {
   const [searchParams] = useSearchParams()
@@ -40,6 +40,10 @@ export function CapturesPage() {
     () => captures.filter((c) => c.status === 'deferred'),
     [captures],
   )
+  const completedCaptures = useMemo(
+    () => captures.filter((c) => c.status === 'triaged'),
+    [captures],
+  )
   const allCaptures = useMemo(
     () => captures.filter((c) => c.status !== 'dismissed'),
     [captures],
@@ -51,10 +55,12 @@ export function CapturesPage() {
         return pendingCaptures
       case 'deferred':
         return deferredCaptures
+      case 'completed':
+        return completedCaptures
       case 'all':
         return allCaptures
     }
-  }, [activeTab, pendingCaptures, deferredCaptures, allCaptures])
+  }, [activeTab, pendingCaptures, deferredCaptures, completedCaptures, allCaptures])
 
   // Clear selection when switching tabs
   useEffect(() => {
@@ -141,6 +147,7 @@ export function CapturesPage() {
   const tabs: { value: FilterTab; label: string; count: number }[] = [
     { value: 'pending', label: 'Pending', count: pendingCaptures.length },
     { value: 'deferred', label: 'Deferred', count: deferredCaptures.length },
+    { value: 'completed', label: 'Completed', count: completedCaptures.length },
     { value: 'all', label: 'All', count: allCaptures.length },
   ]
 
@@ -226,11 +233,11 @@ export function CapturesPage() {
               <CaptureCard
                 key={capture.id}
                 capture={capture}
-                onTriage={handleTriage}
-                onDefer={handleDefer}
-                onDismiss={handleDismiss}
+                onTriage={activeTab !== 'completed' ? handleTriage : undefined}
+                onDefer={activeTab !== 'completed' ? handleDefer : undefined}
+                onDismiss={activeTab !== 'completed' ? handleDismiss : undefined}
                 selected={selectedIds.has(capture.id)}
-                onToggleSelect={toggleSelected}
+                onToggleSelect={activeTab !== 'completed' ? toggleSelected : undefined}
                 highlighted={capture.id === highlightId}
               />
             ))}
