@@ -106,7 +106,7 @@ export function AgentStreamView({ sessionId }: AgentStreamViewProps) {
         onScroll={handleScroll}
         className="h-full overflow-y-auto scroll-smooth"
       >
-        <div className="flex flex-col gap-3 p-4">
+        <div className="flex min-h-full flex-col justify-end gap-3 p-4">
           {events.length === 0 && isRunning && (
             <div className="flex items-center gap-2 pl-1 pt-4">
               <span className="h-4 w-1.5 rounded-sm bg-accent animate-cursor" />
