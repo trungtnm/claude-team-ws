@@ -26,7 +26,7 @@ export function useCreateCaptureMutation() {
   const { projectId } = useProject()
 
   return useMutation({
-    mutationFn: (data: { text: string }) =>
+    mutationFn: (data: { text: string; attachments?: Array<{ filename: string; mimeType: string; url: string }> }) =>
       capturesApi.create(projectId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.captures.all(projectId) })

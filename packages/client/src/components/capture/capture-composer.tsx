@@ -36,6 +36,28 @@ interface Attachment {
   size: number
   type: string
   preview?: string
+  file: File
+}
+
+/** Convert a File to a base64 data URI */
+function fileToDataUri(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+/** Convert local Attachment[] to API-compatible format */
+async function convertAttachments(atts: Attachment[]): Promise<Array<{ filename: string; mimeType: string; url: string }>> {
+  return Promise.all(
+    atts.map(async (att) => ({
+      filename: att.name,
+      mimeType: att.type,
+      url: await fileToDataUri(att.file),
+    })),
+  )
 }
 
 export function CaptureComposer() {
@@ -62,12 +84,16 @@ export function CaptureComposer() {
     setShowClassification(false)
   }, [attachments])
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
     const trimmed = text.trim()
     if (!trimmed) return
 
+    const apiAttachments = attachments.length > 0
+      ? await convertAttachments(attachments)
+      : undefined
+
     createMutation.mutate(
-      { text: trimmed },
+      { text: trimmed, attachments: apiAttachments },
       {
         onSuccess: () => {
           const hadAttachments = attachments.length > 0
@@ -87,12 +113,16 @@ export function CaptureComposer() {
     )
   }, [text, attachments, createMutation, closeComposer, resetForm])
 
-  const handleSubmitAnother = useCallback(() => {
+  const handleSubmitAnother = useCallback(async () => {
     const trimmed = text.trim()
     if (!trimmed) return
 
+    const apiAttachments = attachments.length > 0
+      ? await convertAttachments(attachments)
+      : undefined
+
     createMutation.mutate(
-      { text: trimmed },
+      { text: trimmed, attachments: apiAttachments },
       {
         onSuccess: () => {
           resetForm()
@@ -104,7 +134,7 @@ export function CaptureComposer() {
         },
       },
     )
-  }, [text, createMutation, resetForm])
+  }, [text, attachments, createMutation, resetForm])
 
   const addFiles = useCallback((files: FileList | File[]) => {
     const newAttachments: Attachment[] = Array.from(files).map((file) => ({
@@ -113,6 +143,7 @@ export function CaptureComposer() {
       size: file.size,
       type: file.type,
       preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
+      file,
     }))
     setAttachments((prev) => [...prev, ...newAttachments])
   }, [])

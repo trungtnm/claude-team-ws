@@ -22,7 +22,7 @@ import type {
 // Auth
 export const authApi = {
   login: (apiKey: string) =>
-    api.post<{ user: User }>('/auth/login', { apiKey }),
+    api.post<{ user: User }>('/auth/login', { api_key: apiKey }),
   me: () => api.get<{ user: User }>('/auth/me'),
   logout: () => api.post<void>('/auth/logout'),
 }
@@ -88,7 +88,7 @@ export const capturesApi = {
     const qs = query.toString()
     return api.get<{ captures: Capture[] }>(`/projects/${projectId}/captures${qs ? `?${qs}` : ''}`)
   },
-  create: (projectId: string, data: { text: string }) =>
+  create: (projectId: string, data: { text: string; attachments?: Array<{ filename: string; mimeType: string; url: string }> }) =>
     api.post<{ capture: Capture }>(`/projects/${projectId}/captures`, data),
   update: (projectId: string, captureId: string, data: {
     status: string
@@ -332,53 +332,3 @@ export const mailApi = {
     api.get<unknown>(`/projects/${projectId}/mail/threads/${threadId}`),
 }
 
-// Claude Config
-function configUrl(projectId: string, path: string, repoId?: string): string {
-  const qs = repoId ? `?repo=${repoId}` : ''
-  return `/projects/${projectId}/claude-config/${path}${qs}`
-}
-
-export interface FileContent { content: string | null; mtime: number | null }
-export interface SkillSummary { name: string; description: string; triggers: string[]; mtime: number }
-export interface ConfigItemSummary { name: string; description: string; mtime: number }
-
-export const claudeConfigApi = {
-  getClaudeMd: (projectId: string, repoId?: string) =>
-    api.get<FileContent>(configUrl(projectId, 'claude-md', repoId)),
-  putClaudeMd: (projectId: string, data: { content: string; expectedMtime?: number }, repoId?: string) =>
-    api.put<FileContent>(configUrl(projectId, 'claude-md', repoId), data),
-  listSkills: (projectId: string, repoId?: string) =>
-    api.get<{ skills: SkillSummary[] }>(configUrl(projectId, 'skills', repoId)),
-  getSkill: (projectId: string, name: string, repoId?: string) =>
-    api.get<FileContent>(configUrl(projectId, `skills/${name}`, repoId)),
-  putSkill: (projectId: string, name: string, data: { content: string; expectedMtime?: number }, repoId?: string) =>
-    api.put<FileContent>(configUrl(projectId, `skills/${name}`, repoId), data),
-  deleteSkill: (projectId: string, name: string, repoId?: string) =>
-    api.delete<void>(configUrl(projectId, `skills/${name}`, repoId)),
-  listAgents: (projectId: string, repoId?: string) =>
-    api.get<{ agents: ConfigItemSummary[] }>(configUrl(projectId, 'agents', repoId)),
-  getAgent: (projectId: string, name: string, repoId?: string) =>
-    api.get<FileContent>(configUrl(projectId, `agents/${name}`, repoId)),
-  putAgent: (projectId: string, name: string, data: { content: string; expectedMtime?: number }, repoId?: string) =>
-    api.put<FileContent>(configUrl(projectId, `agents/${name}`, repoId), data),
-  deleteAgent: (projectId: string, name: string, repoId?: string) =>
-    api.delete<void>(configUrl(projectId, `agents/${name}`, repoId)),
-  listCommands: (projectId: string, repoId?: string) =>
-    api.get<{ commands: ConfigItemSummary[] }>(configUrl(projectId, 'commands', repoId)),
-  getCommand: (projectId: string, name: string, repoId?: string) =>
-    api.get<FileContent>(configUrl(projectId, `commands/${name}`, repoId)),
-  putCommand: (projectId: string, name: string, data: { content: string; expectedMtime?: number }, repoId?: string) =>
-    api.put<FileContent>(configUrl(projectId, `commands/${name}`, repoId), data),
-  deleteCommand: (projectId: string, name: string, repoId?: string) =>
-    api.delete<void>(configUrl(projectId, `commands/${name}`, repoId)),
-  listRules: (projectId: string, repoId?: string) =>
-    api.get<{ rules: ConfigItemSummary[] }>(configUrl(projectId, 'rules', repoId)),
-  getRule: (projectId: string, name: string, repoId?: string) =>
-    api.get<FileContent>(configUrl(projectId, `rules/${name}`, repoId)),
-  putRule: (projectId: string, name: string, data: { content: string; expectedMtime?: number }, repoId?: string) =>
-    api.put<FileContent>(configUrl(projectId, `rules/${name}`, repoId), data),
-  deleteRule: (projectId: string, name: string, repoId?: string) =>
-    api.delete<void>(configUrl(projectId, `rules/${name}`, repoId)),
-  getSettings: (projectId: string, repoId?: string) =>
-    api.get<{ settings: Record<string, unknown> | null }>(configUrl(projectId, 'settings', repoId)),
-}

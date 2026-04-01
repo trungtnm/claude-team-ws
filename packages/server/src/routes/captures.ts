@@ -59,7 +59,7 @@ router.get('/', (req, res) => {
 const captureAttachmentSchema = z.object({
   filename: z.string().max(500),
   mimeType: z.string().max(200),
-  url: z.string().max(2000),
+  url: z.string().max(5_000_000), // data URIs can be large (base64 images up to ~3.75MB)
 })
 
 const createCaptureSchema = z.object({
