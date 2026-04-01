@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input'
 import { RichInput } from './rich-input'
 import { cn } from '@/lib/utils'
 import { useCreateSessionMutation, useCapabilitiesQuery } from '@/hooks/use-sessions'
+import { useRepos } from '@/hooks/use-settings'
 import type { Attachment, PermissionMode } from '@/types'
 
 interface NewSessionDialogProps {
@@ -45,6 +46,8 @@ export function NewSessionDialog({ open, onOpenChange, onCreated }: NewSessionDi
 
   const createMutation = useCreateSessionMutation()
   const { data: capabilities } = useCapabilitiesQuery()
+  const { data: repos } = useRepos()
+  const readyRepos = repos?.filter((r) => r.status === 'ready') ?? []
 
   const handleSubmit = useCallback(() => {
     if (!prompt.trim() && attachments.length === 0) return
@@ -114,15 +117,32 @@ export function NewSessionDialog({ open, onOpenChange, onCreated }: NewSessionDi
             />
           </div>
 
-          {/* Target Directory (optional) */}
+          {/* Repository */}
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-ink-secondary">Target Directory <span className="text-ink-disabled">(optional)</span></label>
-            <Input
-              value={targetDir}
-              onChange={(e) => setTargetDir(e.target.value)}
-              placeholder="Leave empty for project root"
-              className="text-sm font-mono"
-            />
+            <label className="mb-1.5 block text-xs font-medium text-ink-secondary">Repository</label>
+            {readyRepos.length > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                {readyRepos.map((repo) => (
+                  <button
+                    key={repo.id}
+                    type="button"
+                    onClick={() => setTargetDir(repo.path)}
+                    className={cn(
+                      'flex items-center gap-2 rounded-[var(--radius-md)] border px-3 py-2 text-left text-sm transition-colors cursor-pointer',
+                      targetDir === repo.path
+                        ? 'border-accent bg-accent-subtle text-ink'
+                        : 'border-edge text-ink-secondary hover:border-edge-hover hover:bg-surface-elevated',
+                    )}
+                  >
+                    <span className="font-medium">{repo.name}</span>
+                    <span className="text-[10px] text-ink-muted font-mono truncate">{repo.defaultBranch}</span>
+                    <span className="ml-auto text-[10px] text-ink-disabled font-mono truncate max-w-48">{repo.path}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-ink-muted">No repositories configured. <a href="/settings" className="text-accent hover:underline">Add repos in Settings</a></p>
+            )}
           </div>
 
           {/* Model */}
@@ -181,7 +201,7 @@ export function NewSessionDialog({ open, onOpenChange, onCreated }: NewSessionDi
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={createMutation.isPending || (!prompt.trim() && attachments.length === 0)}
+            disabled={createMutation.isPending || (!prompt.trim() && attachments.length === 0) || !targetDir}
           >
             {createMutation.isPending ? 'Starting...' : 'Start Session'}
           </Button>
