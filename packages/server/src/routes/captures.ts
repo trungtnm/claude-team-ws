@@ -58,7 +58,7 @@ router.get('/', (req, res) => {
 
 const captureAttachmentSchema = z.object({
   filename: z.string().max(500),
-  mimeType: z.string().max(200),
+  mime_type: z.string().max(200), // Client sends snake_case (toSnakeCase converts mimeType → mime_type)
   url: z.string().max(5_000_000), // data URIs can be large (base64 images up to ~3.75MB)
 })
 
