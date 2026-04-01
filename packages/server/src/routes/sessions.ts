@@ -289,6 +289,7 @@ router.post('/:sessionId/resume', (req, res) => {
   try {
     const projectId = param(req, 'projectId')
     const sessionId = param(req, 'sessionId')
+    const user = req.user!
 
     const session = db
       .select()
@@ -301,7 +302,12 @@ router.post('/:sessionId/resume', (req, res) => {
       return
     }
 
-    if (session.status !== 'failed' && session.status !== 'cancelled') {
+    if (!canMutateSession(user, session.user_id)) {
+      res.status(403).json({ error: 'Only the session owner or techlead can resume sessions' })
+      return
+    }
+
+    if (session.status !== 'failed' && session.status !== 'cancelled' && session.status !== 'completed') {
       res.status(400).json({ error: `Cannot resume session in ${session.status} status` })
       return
     }
@@ -334,6 +340,7 @@ router.post('/:sessionId/answer', (req, res) => {
 
     const projectId = param(req, 'projectId')
     const sessionId = param(req, 'sessionId')
+    const user = req.user!
 
     const session = db
       .select()
@@ -343,6 +350,11 @@ router.post('/:sessionId/answer', (req, res) => {
 
     if (!session) {
       res.status(404).json({ error: 'Session not found' })
+      return
+    }
+
+    if (!canMutateSession(user, session.user_id)) {
+      res.status(403).json({ error: 'Only the session owner or techlead can answer session questions' })
       return
     }
 
@@ -383,6 +395,11 @@ router.post('/:sessionId/complete', (req, res) => {
 
     if (!session) {
       res.status(404).json({ error: 'Session not found' })
+      return
+    }
+
+    if (!canMutateSession(req.user!, session.user_id)) {
+      res.status(403).json({ error: 'Only the session owner or techlead can complete sessions' })
       return
     }
 
@@ -451,7 +468,14 @@ router.post('/:sessionId/message', (req, res) => {
       return
     }
 
-    if (!['idle', 'running', 'waiting_input'].includes(session.status)) {
+    if (!canMutateSession(req.user!, session.user_id)) {
+      res.status(403).json({ error: 'Only the session owner or techlead can message sessions' })
+      return
+    }
+
+    // Allow messages to active and terminal sessions (terminal = resume)
+    const allowedStatuses = ['idle', 'running', 'waiting_input', 'completed', 'failed', 'cancelled']
+    if (!allowedStatuses.includes(session.status)) {
       res.status(400).json({ error: `Cannot send message to session in ${session.status} status` })
       return
     }
@@ -499,6 +523,11 @@ router.post('/:sessionId/permission-mode', (req, res) => {
 
     if (!session) {
       res.status(404).json({ error: 'Session not found' })
+      return
+    }
+
+    if (!canMutateSession(req.user!, session.user_id)) {
+      res.status(403).json({ error: 'Only the session owner or techlead can change permission mode' })
       return
     }
 
@@ -647,11 +676,14 @@ router.get('/:sessionId/events', (req, res) => {
       .limit(limit)
       .all()
 
-    // Parse event data
-    const events = rows.map(row => ({
-      ...row,
-      data: JSON.parse(row.data),
-    }))
+    // Parse event data — handle corrupted JSON gracefully
+    const events = rows.map(row => {
+      try {
+        return { ...row, data: JSON.parse(row.data) }
+      } catch {
+        return { ...row, data: { _parseError: true, raw: row.data } }
+      }
+    })
 
     res.json({ events })
   } catch (err) {

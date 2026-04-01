@@ -296,15 +296,15 @@ describe('Sessions Routes (integration)', () => {
       expect(res.status).toBe(200)
     })
 
-    it('rejects message for completed session', async () => {
+    it('accepts message for completed session (resume)', async () => {
       const id = insertSession({ status: 'completed' })
 
       const app = createTestApp()
       const res = await request(app)
         .post(`/api/projects/proj_test/sessions/${id}/message`)
-        .send({ message: 'This should fail' })
+        .send({ message: 'Resume this session' })
 
-      expect(res.status).toBe(400)
+      expect(res.status).toBe(200)
     })
   })
 

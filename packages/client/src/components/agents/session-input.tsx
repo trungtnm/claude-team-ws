@@ -43,15 +43,15 @@ export function SessionInput({ session, onCancel }: SessionInputProps) {
     )
   }, [message, attachments, session.id, sendMessageMutation])
 
-  if (isTerminal) return null
-
-  const placeholder = isRunning
-    ? 'Interrupt agent... (/ for commands, @ for agents)'
-    : isIdle
-      ? 'Send follow-up message... (/ for commands, @ for agents)'
-      : isWaiting
-        ? 'Message... (/ for commands, @ for agents)'
-        : 'Message...'
+  const placeholder = isTerminal
+    ? 'Send message to resume session...'
+    : isRunning
+      ? 'Interrupt agent... (/ for commands, @ for agents)'
+      : isIdle
+        ? 'Send follow-up message... (/ for commands, @ for agents)'
+        : isWaiting
+          ? 'Message... (/ for commands, @ for agents)'
+          : 'Message...'
 
   return (
     <div className="border-t border-edge bg-surface-raised px-4 py-3">

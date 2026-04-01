@@ -93,35 +93,33 @@ interface CommandPolicy {
   secret_file_patterns: string[]
 }
 
+// Patterns are regexes (case-insensitive). Use \b for word boundaries, \s* for flexible whitespace.
 const DEFAULT_POLICY: CommandPolicy = {
   hard_block_patterns: [
-    'rm -rf /',
-    'rm -rf ~',
-    'rm -rf $HOME',
-    'sudo ',
-    'curl|bash',
-    'curl|sh',
-    'wget|bash',
-    'wget|sh',
-    'git push --force main',
-    'git push --force master',
-    'git push --force production',
-    'git push -f main',
-    'git push -f master',
-    'shutdown',
-    'reboot',
-    'kill -9 1',
-    'docker run --privileged',
-    'npm publish',
-    'docker push',
+    'rm\\s+-rf\\s+/',
+    'rm\\s+-rf\\s+~',
+    'rm\\s+-rf\\s+\\$HOME',
+    '\\bsudo\\b',
+    'curl\\s.*\\|\\s*(ba)?sh',
+    'wget\\s.*\\|\\s*(ba)?sh',
+    '\\|\\s*base64\\s.*\\|\\s*(ba)?sh',
+    'git\\s+push\\s+(-f|--force)\\s+(main|master|production)',
+    '\\bshutdown\\b',
+    '\\breboot\\b',
+    'kill\\s+-9\\s+1\\b',
+    'docker\\s+run\\s+--privileged',
+    '\\bnpm\\s+publish\\b',
+    '\\bdocker\\s+push\\b',
+    'mkfs\\b',
+    'dd\\s+if=',
   ],
   pause_ask_patterns: [
-    'rm -rf',
-    'rm -r ',
-    'git push',
-    'git reset --hard',
-    'git checkout .',
-    'git clean',
+    'rm\\s+(-r|-rf|--recursive)',
+    'git\\s+push',
+    'git\\s+reset\\s+--hard',
+    'git\\s+checkout\\s+\\.',
+    'git\\s+clean',
+    'chmod\\s+-R\\s+777',
   ],
   secret_file_patterns: [
     '.env',
@@ -139,17 +137,28 @@ const DEFAULT_POLICY: CommandPolicy = {
 
 type PolicyResult = 'allow' | 'block' | 'ask'
 
-function evaluateCommandPolicy(command: string, policy: CommandPolicy): PolicyResult {
-  const normalized = command.toLowerCase().trim()
+/** Compile regex patterns with caching for performance */
+const regexCache = new Map<string, RegExp>()
+function getPatternRegex(pattern: string): RegExp {
+  let re = regexCache.get(pattern)
+  if (!re) {
+    re = new RegExp(pattern, 'i')
+    regexCache.set(pattern, re)
+  }
+  return re
+}
 
-  // Check hard-block patterns first
+function evaluateCommandPolicy(command: string, policy: CommandPolicy): PolicyResult {
+  const normalized = command.trim()
+
+  // Check hard-block patterns first (regex-based)
   for (const pattern of policy.hard_block_patterns) {
-    if (normalized.includes(pattern.toLowerCase())) return 'block'
+    if (getPatternRegex(pattern).test(normalized)) return 'block'
   }
 
   // Check pause-ask patterns
   for (const pattern of policy.pause_ask_patterns) {
-    if (normalized.includes(pattern.toLowerCase())) return 'ask'
+    if (getPatternRegex(pattern).test(normalized)) return 'ask'
   }
 
   return 'allow'
@@ -464,6 +473,9 @@ class SessionRunner {
         }).run()
       }
     } finally {
+      // Persist token counters before cleanup so they survive resume
+      this.saveTokenCounters(sessionId)
+
       // Only clean up if this invocation's abort controller is still current.
       // If sendMessage() replaced it, a new runAgent() is already running — don't interfere.
       if (managed.abortController === myAbortController) {
@@ -1093,15 +1105,24 @@ class SessionRunner {
     return true
   }
 
-  /** Send a follow-up message to an idle or running session */
+  /** Send a follow-up message to an idle, running, or terminal session (resume) */
   sendMessage(sessionId: string, message: string, attachments?: Attachment[]): boolean {
     const managed = this.managed.get(sessionId)
     const session = db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
     if (!session) return false
 
-    // Only allow sending messages to idle or running sessions
-    if (session.status !== 'idle' && session.status !== 'running' && session.status !== 'waiting_input') {
+    // Allow messages to active sessions (idle/running/waiting_input) and terminal sessions (for resume)
+    const allowed = new Set(['idle', 'running', 'waiting_input', 'completed', 'failed', 'cancelled'])
+    if (!allowed.has(session.status)) {
       return false
+    }
+
+    // For terminal sessions, clear finished_at so session is treated as active
+    if (session.status === 'completed' || session.status === 'failed' || session.status === 'cancelled') {
+      db.update(sessions)
+        .set({ finished_at: null })
+        .where(eq(sessions.id, sessionId))
+        .run()
     }
 
     // If running or waiting, abort current execution first (interrupt)
@@ -1146,9 +1167,9 @@ class SessionRunner {
         permissionMode: session.permission_mode ?? 'default',
         targetDir,
         commandPolicy: loadProjectPolicy(session.project_id),
-        inputTokens: 0,
-        outputTokens: 0,
-        toolCallCount: 0,
+        inputTokens: session.input_tokens_used ?? 0,
+        outputTokens: session.output_tokens_used ?? 0,
+        toolCallCount: session.tool_calls_used ?? 0,
         toolCallTimestamps: [],
         limits: loadSessionLimits(session.project_id),
         inputWarned: false,
@@ -1287,6 +1308,20 @@ class SessionRunner {
     return true
   }
 
+  /** Persist token/tool usage counters to DB so they survive resume cycles */
+  private saveTokenCounters(sessionId: string): void {
+    const managed = this.managed.get(sessionId)
+    if (!managed) return
+    db.update(sessions)
+      .set({
+        input_tokens_used: managed.inputTokens,
+        output_tokens_used: managed.outputTokens,
+        tool_calls_used: managed.toolCallCount,
+      })
+      .where(eq(sessions.id, sessionId))
+      .run()
+  }
+
   /** Remove attachment files for a session from the temp directory */
   private cleanupAttachments(sessionId: string): void {
     try {
@@ -1406,6 +1441,14 @@ class SessionRunner {
       const io = getIO()
       io.on('connection', (socket) => {
         socket.on('session:answer', (data: { sessionId: string; answer: string }) => {
+          // Verify the socket user owns this session or is a techlead
+          const socketUser = socket.data?.user as { id: string; role: string } | undefined
+          if (!socketUser) return
+
+          const session = db.select().from(sessions).where(eq(sessions.id, data.sessionId)).get()
+          if (!session) return
+          if (session.user_id !== socketUser.id && socketUser.role !== 'techlead') return
+
           this.answerQuestion(data.sessionId, data.answer)
         })
       })
