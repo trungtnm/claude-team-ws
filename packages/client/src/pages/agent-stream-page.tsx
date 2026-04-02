@@ -108,7 +108,7 @@ export default function AgentStreamPage() {
         <SessionStatsBar session={session} />
         {active && (
           <div className="px-4 py-1.5 border-t border-edge">
-            <PermissionModeBar sessionId={session.id} currentMode="default" />
+            <PermissionModeBar sessionId={session.id} currentMode={session.permissionMode ?? 'default'} />
           </div>
         )}
         <SessionInput

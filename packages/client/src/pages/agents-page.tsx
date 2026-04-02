@@ -93,6 +93,14 @@ export default function AgentsPage() {
     }
   }, [selectedSessionId, activeSessions])
 
+  // Refresh time-ago display every 60s for active sessions
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    if (activeSessions.length === 0) return
+    const id = setInterval(() => setTick((n) => n + 1), 60_000)
+    return () => clearInterval(id)
+  }, [activeSessions.length])
+
   const filteredSessions = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
     const match = (s: AgentSession) =>
