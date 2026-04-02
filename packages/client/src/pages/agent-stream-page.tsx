@@ -96,12 +96,6 @@ export default function AgentStreamPage() {
           )}
         </div>
 
-        {/* Permission mode bar */}
-        {active && (
-          <div className="mt-2 ml-[72px]">
-            <PermissionModeBar sessionId={session.id} currentMode="default" />
-          </div>
-        )}
       </div>
 
       {/* Stream */}
@@ -109,9 +103,14 @@ export default function AgentStreamPage() {
         <AgentStreamView sessionId={session.id} />
       </div>
 
-      {/* Stats bar + input */}
+      {/* Permission mode bar + Stats bar + input */}
       <div className="shrink-0">
         <SessionStatsBar session={session} />
+        {active && (
+          <div className="px-4 py-1.5 border-t border-edge">
+            <PermissionModeBar sessionId={session.id} currentMode="default" />
+          </div>
+        )}
         <SessionInput
           session={session}
           onCancel={handleCancel}

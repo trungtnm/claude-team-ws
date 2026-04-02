@@ -28,16 +28,13 @@ const statusConfig: Record<string, { dot: string; label: string; badge: 'success
   detached: { dot: 'bg-gray-400', label: 'Detached', badge: 'default' },
 }
 
-function LiveDuration({ startedAt }: { startedAt: number }) {
-  const [now, setNow] = useState(Math.floor(Date.now() / 1000))
-  useEffect(() => {
-    const interval = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000)
-    return () => clearInterval(interval)
-  }, [])
-  const seconds = now - startedAt
+function formatTimeAgo(startedAt: number): string {
+  const seconds = Math.floor(Date.now() / 1000) - startedAt
+  if (seconds < 60) return 'just now'
   const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return <span className="font-mono tabular-nums">{m}:{String(s).padStart(2, '0')}</span>
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  return `${h}h ${m % 60}m ago`
 }
 
 function formatDuration(seconds: number): string {
@@ -271,7 +268,7 @@ export default function AgentsPage() {
                     </Badge>
                     {isActiveSession(selectedSession) && selectedSession.startedAt && (
                       <span className="text-xs text-ink-muted">
-                        <LiveDuration startedAt={selectedSession.startedAt} />
+                        {formatTimeAgo(selectedSession.startedAt)}
                       </span>
                     )}
                   </div>
@@ -324,12 +321,6 @@ export default function AgentsPage() {
                   </div>
                 </div>
 
-                {/* Permission mode bar */}
-                {isActiveSession(selectedSession) && (
-                  <div className="mt-2">
-                    <PermissionModeBar sessionId={selectedSession.id} currentMode={selectedSession.permissionMode ?? 'default'} />
-                  </div>
-                )}
               </div>
 
               {/* Stream view */}
@@ -337,9 +328,14 @@ export default function AgentsPage() {
                 <AgentStreamView sessionId={selectedSession.id} />
               </div>
 
-              {/* Stats bar + input */}
+              {/* Permission mode bar + Stats bar + input */}
               <div className="shrink-0">
                 <SessionStatsBar session={selectedSession} />
+                {isActiveSession(selectedSession) && (
+                  <div className="px-4 py-1.5 border-t border-edge">
+                    <PermissionModeBar sessionId={selectedSession.id} currentMode={selectedSession.permissionMode ?? 'default'} />
+                  </div>
+                )}
                 <SessionInput
                   session={selectedSession}
                   onCancel={() => interruptMutation.mutate(selectedSession.id)}
@@ -436,10 +432,7 @@ function SessionListItem({
       {/* Bottom row: stats */}
       <div className="mt-1.5 flex items-center gap-3 text-[10px] text-ink-disabled">
         {active && session.startedAt ? (
-          <span className="flex items-center gap-1">
-            <Loader2 className="h-2.5 w-2.5 animate-spin" />
-            <LiveDuration startedAt={session.startedAt} />
-          </span>
+          <span>{formatTimeAgo(session.startedAt)}</span>
         ) : session.startedAt && session.finishedAt ? (
           <span>{formatDuration(session.finishedAt - session.startedAt)}</span>
         ) : (
