@@ -1,6 +1,14 @@
 import type { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
-import { randomBytes } from 'crypto'
+import { randomBytes, createHash } from 'crypto'
+
+/**
+ * Hash an API key using SHA-256 for secure storage.
+ * The DB stores hashes, not plaintext keys.
+ */
+export function hashApiKey(apiKey: string): string {
+  return createHash('sha256').update(apiKey).digest('hex')
+}
 
 // JWT secret — must be set in production
 const JWT_SECRET = process.env.JWT_SECRET

@@ -5,13 +5,17 @@ import cookieParser from 'cookie-parser'
 import { createAuthRouter } from './auth.js'
 
 // Mock the auth middleware
-vi.mock('../middleware/auth.js', () => ({
-  getJwtSecret: vi.fn(() => 'test-secret-key-for-testing'),
-  authenticate: vi.fn((req: any, _res: any, next: any) => {
-    req.user = { id: 'user_test123', name: 'Test User', role: 'pm' }
-    next()
-  }),
-}))
+vi.mock('../middleware/auth.js', async () => {
+  const { createHash } = await import('crypto')
+  return {
+    getJwtSecret: vi.fn(() => 'test-secret-key-for-testing'),
+    authenticate: vi.fn((req: any, _res: any, next: any) => {
+      req.user = { id: 'user_test123', name: 'Test User', role: 'pm' }
+      next()
+    }),
+    hashApiKey: vi.fn((key: string) => createHash('sha256').update(key).digest('hex')),
+  }
+})
 
 // Mock jsonwebtoken
 vi.mock('jsonwebtoken', () => ({
@@ -43,7 +47,8 @@ describe('Auth Routes', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    const router = createAuthRouter({ db: mockDb, users: mockUsers })
+    const noop: express.RequestHandler = (_req, _res, next) => next()
+    const router = createAuthRouter({ db: mockDb, users: mockUsers, authLimiter: noop })
     app = express()
     app.use(express.json())
     app.use(cookieParser())

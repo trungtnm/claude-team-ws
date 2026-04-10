@@ -2,15 +2,14 @@ import rateLimit from 'express-rate-limit'
 import type { RequestHandler } from 'express'
 
 const isTest = process.env.NODE_ENV === 'test'
-const isDev = process.env.NODE_ENV === 'development'
 
 const noop: RequestHandler = (_req, _res, next) => next()
 
 /**
  * Global API rate limiter — applied to all routes.
- * 500 requests per minute per IP. Disabled in test and development environments.
+ * 500 requests per minute per IP. Only disabled in test environment.
  */
-export const globalLimiter: RequestHandler = isTest || isDev
+export const globalLimiter: RequestHandler = isTest
   ? noop
   : rateLimit({
     windowMs: 60 * 1000,
@@ -18,6 +17,7 @@ export const globalLimiter: RequestHandler = isTest || isDev
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     message: { error: 'Too many requests, please try again later' },
+    skip: (req) => req.method === 'GET' && req.originalUrl === '/api/auth/me',
   })
 
 /**

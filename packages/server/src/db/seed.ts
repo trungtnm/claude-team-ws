@@ -1,7 +1,13 @@
 import { nanoid } from 'nanoid'
 import { eq } from 'drizzle-orm'
+import { createHash } from 'crypto'
 import { db, sqlite } from './index.js'
 import { users, projects, projectMembers } from './schema.js'
+
+/** Hash API key with SHA-256 for secure storage */
+function hashKey(key: string): string {
+  return createHash('sha256').update(key).digest('hex')
+}
 
 // Admin key: random per seed unless CTW_E2E_API_KEY is explicitly set for E2E tests
 const adminApiKey = process.env.CTW_E2E_API_KEY || `ctw-${nanoid(16)}`
@@ -9,13 +15,20 @@ const adminApiKey = process.env.CTW_E2E_API_KEY || `ctw-${nanoid(16)}`
 // Bot API key: stable via env var or random per seed
 const botApiKey = process.env.CTW_BOT_API_KEY || `ctw-bot-${nanoid(16)}`
 
+// Generate plaintext keys for display, store hashed versions
+const userKeys: Array<{ id: string; plaintext: string }> = []
+function makeUser(id: string, name: string, email: string, role: 'techlead' | 'pm' | 'dev' | 'viewer', plaintextKey: string) {
+  userKeys.push({ id, plaintext: plaintextKey })
+  return { id, name, email, role, api_key: hashKey(plaintextKey) }
+}
+
 const DEFAULT_USERS = [
-  { id: 'usr_admin', name: 'Trung Tran', email: 'trung@team.local', role: 'techlead' as const, api_key: adminApiKey },
-  { id: 'usr_pm', name: 'Minh Nguyen', email: 'minh@team.local', role: 'pm' as const, api_key: `ctw-${nanoid(16)}` },
-  { id: 'usr_dev1', name: 'Hoa Le', email: 'hoa@team.local', role: 'dev' as const, api_key: `ctw-${nanoid(16)}` },
-  { id: 'usr_dev2', name: 'Khoa Pham', email: 'khoa@team.local', role: 'dev' as const, api_key: `ctw-${nanoid(16)}` },
-  { id: 'usr_viewer', name: 'Lan Vo', email: 'lan@team.local', role: 'viewer' as const, api_key: `ctw-${nanoid(16)}` },
-  { id: 'usr_bot', name: 'Agent Bot', email: 'bot@system.local', role: 'dev' as const, api_key: botApiKey },
+  makeUser('usr_admin', 'Trung Tran', 'trung@team.local', 'techlead', adminApiKey),
+  makeUser('usr_pm', 'Minh Nguyen', 'minh@team.local', 'pm', `ctw-${nanoid(16)}`),
+  makeUser('usr_dev1', 'Hoa Le', 'hoa@team.local', 'dev', `ctw-${nanoid(16)}`),
+  makeUser('usr_dev2', 'Khoa Pham', 'khoa@team.local', 'dev', `ctw-${nanoid(16)}`),
+  makeUser('usr_viewer', 'Lan Vo', 'lan@team.local', 'viewer', `ctw-${nanoid(16)}`),
+  makeUser('usr_bot', 'Agent Bot', 'bot@system.local', 'dev', botApiKey),
 ]
 
 const DEFAULT_PROJECT = {
@@ -153,12 +166,16 @@ export function seed(): void {
 
   const now = Math.floor(Date.now() / 1000)
 
-  // Seed users
+  // Seed users (API keys are stored as SHA-256 hashes)
   for (const u of DEFAULT_USERS) {
     const existing = db.select().from(users).where(eq(users.id, u.id)).get()
     if (!existing) {
       db.insert(users).values({ ...u, created_at: now, updated_at: now }).run()
+      const keyInfo = userKeys.find(k => k.id === u.id)
       console.log(`  Seeded user: ${u.name} <${u.email}> (${u.role})`)
+      if (keyInfo && (u.id === 'usr_admin' || u.id === 'usr_bot')) {
+        console.log(`    API key: ${keyInfo.plaintext} (save this — stored as hash, not recoverable)`)
+      }
     }
   }
 

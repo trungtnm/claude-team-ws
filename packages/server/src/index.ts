@@ -11,14 +11,13 @@ import { eq } from 'drizzle-orm'
 import { db } from './db/index.js'
 import { users } from './db/schema.js'
 import { seed } from './db/seed.js'
-import { setAuthUserLookup, authenticate } from './middleware/auth.js'
+import { setAuthUserLookup, authenticate, hashApiKey } from './middleware/auth.js'
 import { requireProjectMember } from './middleware/project-access.js'
 import { globalLimiter, authLimiter } from './middleware/rate-limit.js'
 import { initSocketIO, setUserLookup } from './services/socket-manager.js'
 import { BvService } from './services/bv-service.js'
 import { initSessionRunner, stopSessionRunner } from './services/session-runner.js'
 import { initSessionCleanup, stopSessionCleanup } from './services/session-cleanup.js'
-import { configWatcher } from './services/config-watcher.js'
 
 // Routes
 import healthRouter from './routes/health.js'
@@ -37,7 +36,6 @@ import reviewsRouter from './routes/reviews.js'
 import mailRouter from './routes/mail.js'
 // beads-sync removed — app DB is now single source of truth
 import { createActivityRouter } from './routes/activity.js'
-import { createClaudeConfigRouter } from './routes/claude-config.js'
 
 const PORT = parseInt(process.env.PORT || '3000', 10)
 const PROJECT_ROOT = process.env.PROJECT_ROOT || '.'
@@ -77,7 +75,9 @@ seed()
 async function lookupUser(criteria: { apiKey?: string; userId?: string }) {
   const { apiKey, userId } = criteria
   if (apiKey) {
-    const row = db.select().from(users).where(eq(users.api_key, apiKey)).get()
+    // API keys are stored as SHA-256 hashes — hash the input before lookup
+    const hashedKey = hashApiKey(apiKey)
+    const row = db.select().from(users).where(eq(users.api_key, hashedKey)).get()
     if (row) return { id: row.id, name: row.name, role: row.role }
   } else if (userId) {
     const row = db.select().from(users).where(eq(users.id, userId)).get()
@@ -93,7 +93,7 @@ setUserLookup(lookupUser)
 
 // Public routes (no auth)
 app.use('/api/health', healthRouter)
-app.use('/api/auth', authLimiter, createAuthRouter({ db, users }))
+app.use('/api/auth', createAuthRouter({ db, users, authLimiter }))
 
 // Protected routes
 app.use('/api/projects', authenticate, projectsRouter)
@@ -109,7 +109,6 @@ app.use('/api/projects/:projectId/reviews', authenticate, requireProjectMember, 
 app.use('/api/projects/:projectId/mail', authenticate, requireProjectMember, mailRouter)
 // beads-sync route removed
 app.use('/api/projects/:projectId/activity', authenticate, requireProjectMember, createActivityRouter({ db }))
-app.use('/api/projects/:projectId/claude-config', authenticate, requireProjectMember, createClaudeConfigRouter({ db }))
 
 // User-scoped routes (no project context)
 app.use('/api/notifications', authenticate, notificationsRouter)
@@ -162,7 +161,6 @@ process.on('SIGTERM', () => {
   console.log('[Server] SIGTERM received — shutting down gracefully')
   stopSessionCleanup()
   stopSessionRunner()
-  configWatcher.stop()
   httpServer.close()
 })
 
@@ -170,13 +168,11 @@ process.on('SIGINT', () => {
   console.log('[Server] SIGINT received — shutting down gracefully')
   stopSessionCleanup()
   stopSessionRunner()
-  configWatcher.stop()
   httpServer.close()
 })
 
 httpServer.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`)
-  configWatcher.start()
 })
 
 export { app, httpServer }

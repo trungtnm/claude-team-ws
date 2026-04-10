@@ -1,21 +1,22 @@
-import { Router } from 'express'
+import { Router, type RequestHandler } from 'express'
 import jwt from 'jsonwebtoken'
 import { eq } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
-import { getJwtSecret, authenticate } from '../middleware/auth.js'
+import { getJwtSecret, authenticate, hashApiKey } from '../middleware/auth.js'
 import type * as schema from '../db/schema.js'
 import { logError } from '../utils/log-error.js'
 
 interface AuthRouterDeps {
   db: BetterSQLite3Database<typeof schema>
   users: typeof schema.users
+  authLimiter: RequestHandler
 }
 
-export function createAuthRouter({ db, users }: AuthRouterDeps): Router {
+export function createAuthRouter({ db, users, authLimiter }: AuthRouterDeps): Router {
   const router = Router()
 
   // POST /api/auth/login — authenticate with API key, set JWT cookie
-  router.post('/login', async (req, res) => {
+  router.post('/login', authLimiter, async (req, res) => {
     try {
       const apiKey = req.body?.api_key
       if (!apiKey || typeof apiKey !== 'string') {
@@ -23,7 +24,7 @@ export function createAuthRouter({ db, users }: AuthRouterDeps): Router {
         return
       }
 
-      const user = db.select().from(users).where(eq(users.api_key, apiKey)).get()
+      const user = db.select().from(users).where(eq(users.api_key, hashApiKey(apiKey))).get()
       if (!user) {
         res.status(401).json({ error: 'Invalid API key' })
         return
