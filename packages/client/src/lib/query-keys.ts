@@ -89,31 +89,6 @@ export const queryKeys = {
       [...queryKeys.activity.all(projectId), 'metrics'] as const,
   },
 
-  // Claude Config (scoped to project, optionally to repo)
-  claudeConfig: {
-    all: (projectId: string) => ['claude-config', { projectId }] as const,
-    claudeMd: (projectId: string, repoId?: string) =>
-      [...queryKeys.claudeConfig.all(projectId), 'claude-md', { repoId }] as const,
-    skills: (projectId: string, repoId?: string) =>
-      [...queryKeys.claudeConfig.all(projectId), 'skills', { repoId }] as const,
-    skill: (projectId: string, name: string, repoId?: string) =>
-      [...queryKeys.claudeConfig.all(projectId), 'skills', name, { repoId }] as const,
-    agents: (projectId: string, repoId?: string) =>
-      [...queryKeys.claudeConfig.all(projectId), 'agents', { repoId }] as const,
-    agent: (projectId: string, name: string, repoId?: string) =>
-      [...queryKeys.claudeConfig.all(projectId), 'agents', name, { repoId }] as const,
-    commands: (projectId: string, repoId?: string) =>
-      [...queryKeys.claudeConfig.all(projectId), 'commands', { repoId }] as const,
-    command: (projectId: string, name: string, repoId?: string) =>
-      [...queryKeys.claudeConfig.all(projectId), 'commands', name, { repoId }] as const,
-    rules: (projectId: string, repoId?: string) =>
-      [...queryKeys.claudeConfig.all(projectId), 'rules', { repoId }] as const,
-    rule: (projectId: string, name: string, repoId?: string) =>
-      [...queryKeys.claudeConfig.all(projectId), 'rules', name, { repoId }] as const,
-    settings: (projectId: string, repoId?: string) =>
-      [...queryKeys.claudeConfig.all(projectId), 'settings', { repoId }] as const,
-  },
-
   // Notifications (user-scoped, no projectId)
   notifications: {
     all: ['notifications'] as const,
