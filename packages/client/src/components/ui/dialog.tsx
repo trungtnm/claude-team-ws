@@ -39,7 +39,10 @@ const DialogContent = React.forwardRef<
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 z-10 rounded-[var(--radius-sm)] p-1 text-ink-muted hover:text-ink hover:bg-surface-elevated transition-colors cursor-pointer">
+      <DialogPrimitive.Close
+        className="absolute z-10 rounded-[var(--radius-sm)] p-1 text-ink-muted hover:text-ink hover:bg-surface-elevated transition-colors cursor-pointer"
+        style={{ right: '1rem', top: '1rem' }}
+      >
         <X className="h-4 w-4" />
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
