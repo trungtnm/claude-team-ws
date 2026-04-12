@@ -12,6 +12,7 @@ import {
   Zap,
   User,
   PanelLeftClose,
+  Circle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -27,6 +28,7 @@ interface TreeNode {
   tooltip: string
   type: 'thinking' | 'tool' | 'question' | 'system' | 'result' | 'error' | 'user' | 'step' | 'workflow'
   highlighted: boolean
+  childCount: number
   children: TreeNode[]
   eventIds: number[]
 }
@@ -55,23 +57,23 @@ function isHighlighted(type: TreeNode['type']): boolean {
   return type === 'question' || type === 'thinking' || type === 'error' || type === 'step' || type === 'workflow'
 }
 
-// ─── Labels (short, for the tree) ───────────────────────────────────────────
+// ─── Labels ─────────────────────────────────────────────────────────────────
 
-function getLabel(event: ParsedStreamEvent, type: TreeNode['type']): string {
+function getLabel(_event: ParsedStreamEvent, type: TreeNode['type']): string {
   switch (type) {
     case 'thinking':   return 'Thinking'
     case 'question':   return 'User Input Required'
     case 'user':       return 'User'
-    case 'tool':       return event.toolName || 'Tool'
-    case 'step':       return `Step: ${event.stepId || 'unknown'}`
-    case 'workflow':   return event.subtype === 'workflow_start' ? 'Workflow started' : 'Workflow complete'
+    case 'tool':       return _event.toolName || 'Tool'
+    case 'step':       return `Step: ${_event.stepId || 'unknown'}`
+    case 'workflow':   return _event.subtype === 'workflow_start' ? 'Workflow started' : 'Workflow complete'
     case 'result':     return 'Completed'
     case 'error':      return 'Error'
-    case 'system':     return event.content.slice(0, 40) || 'System'
+    case 'system':     return _event.content.slice(0, 40) || 'System'
   }
 }
 
-// ─── Tooltips (full detail, shown on hover) ─────────────────────────────────
+// ─── Tooltips ───────────────────────────────────────────────────────────────
 
 function getTooltip(event: ParsedStreamEvent, type: TreeNode['type']): string {
   switch (type) {
@@ -123,6 +125,17 @@ function getColor(type: TreeNode['type']): string {
   }
 }
 
+function getLeftBorderColor(type: TreeNode['type']): string {
+  switch (type) {
+    case 'thinking':   return 'border-l-accent/40'
+    case 'question':   return 'border-l-amber-400/60'
+    case 'error':      return 'border-l-red-400/60'
+    case 'step':       return 'border-l-blue-400/40'
+    case 'workflow':   return 'border-l-accent/40'
+    default:           return 'border-l-transparent'
+  }
+}
+
 // ─── Build Tree from Events ──────────────────────────────────────────────────
 
 function makeNode(event: ParsedStreamEvent, type: TreeNode['type']): TreeNode {
@@ -132,6 +145,7 @@ function makeNode(event: ParsedStreamEvent, type: TreeNode['type']): TreeNode {
     tooltip: getTooltip(event, type),
     type,
     highlighted: isHighlighted(type),
+    childCount: 0,
     children: [],
     eventIds: [event.id],
   }
@@ -146,20 +160,31 @@ function buildTree(events: ParsedStreamEvent[]): TreeNode[] {
     if (consecutiveTools.length === 1) {
       nodes.push(makeNode(consecutiveTools[0], 'tool'))
     } else {
-      const toolNames = [...new Set(consecutiveTools.filter(e => e.toolName).map(e => e.toolName!))]
-      const label = toolNames.length <= 3
-        ? toolNames.join(', ')
+      // Count unique tool names for the label
+      const toolCounts = new Map<string, number>()
+      for (const ev of consecutiveTools) {
+        if (ev.toolName) toolCounts.set(ev.toolName, (toolCounts.get(ev.toolName) || 0) + 1)
+      }
+      const parts: string[] = []
+      for (const [name, count] of toolCounts) {
+        parts.push(count > 1 ? `${name} ×${count}` : name)
+      }
+      const label = parts.length <= 3
+        ? parts.join(', ')
         : `${consecutiveTools.length} tool calls`
+
       const tooltip = consecutiveTools
         .filter(e => e.toolName)
         .map(e => `${e.toolName}${e.toolInput ? `: ${e.toolInput.slice(0, 60)}` : ''}`)
         .join('\n')
+
       nodes.push({
         id: consecutiveTools[0].id,
         label,
         tooltip,
         type: 'tool',
         highlighted: false,
+        childCount: consecutiveTools.length,
         children: consecutiveTools.map(ev => makeNode(ev, 'tool')),
         eventIds: consecutiveTools.map(e => e.id),
       })
@@ -211,6 +236,7 @@ function TreeNodeItem({
   const hasChildren = node.children.length > 0
   const isQuestion = node.type === 'question'
   const isImportant = isQuestion || node.type === 'error'
+  const borderColor = getLeftBorderColor(node.type)
 
   return (
     <div>
@@ -223,9 +249,10 @@ function TreeNodeItem({
               onSelect(node.eventIds[0])
             }}
             className={cn(
-              'flex w-full items-center gap-1.5 rounded-[var(--radius-sm)] px-1.5 py-1 text-left text-[11px] transition-colors cursor-pointer',
+              'flex w-full items-center gap-1.5 border-l-2 px-1.5 py-1 text-left text-[11px] transition-all duration-150 cursor-pointer',
+              borderColor,
               isActive
-                ? 'bg-accent/10 text-accent'
+                ? 'bg-accent/10 text-accent border-l-accent'
                 : isQuestion
                   ? 'text-amber-400 bg-amber-500/5 hover:bg-amber-500/10'
                   : node.highlighted
@@ -235,14 +262,19 @@ function TreeNodeItem({
             style={{ paddingLeft: `${depth * 12 + 6}px` }}
           >
             {hasChildren ? (
-              expanded
-                ? <ChevronDown className="h-3 w-3 shrink-0 text-ink-disabled" />
-                : <ChevronRight className="h-3 w-3 shrink-0 text-ink-disabled" />
+              <span className="flex h-3 w-3 shrink-0 items-center justify-center">
+                {expanded
+                  ? <ChevronDown className="h-3 w-3 text-ink-disabled transition-transform" />
+                  : <ChevronRight className="h-3 w-3 text-ink-disabled transition-transform" />
+                }
+              </span>
             ) : (
-              <span className="w-3 shrink-0" />
+              <span className="flex h-3 w-3 shrink-0 items-center justify-center">
+                <Circle className="h-1 w-1 fill-current opacity-30" />
+              </span>
             )}
             <Icon className={cn(
-              'shrink-0',
+              'shrink-0 transition-colors',
               isQuestion ? 'h-3.5 w-3.5' : 'h-3 w-3',
               isActive ? 'text-accent' : color,
             )} />
@@ -253,21 +285,35 @@ function TreeNodeItem({
             )}>
               {node.label}
             </span>
+            {hasChildren && node.childCount > 0 && (
+              <span className="ml-auto shrink-0 rounded-full bg-surface-elevated px-1.5 text-[9px] font-medium text-ink-disabled">
+                {node.childCount}
+              </span>
+            )}
           </button>
         </TooltipTrigger>
         {node.tooltip && (
-          <TooltipContent side="right" className="max-w-[350px] max-h-[300px] overflow-y-auto whitespace-pre-wrap">
-            <p className={cn(
-              'text-[11px] leading-relaxed',
-              node.type === 'tool' && 'font-mono',
-            )}>
-              {node.tooltip}
-            </p>
+          <TooltipContent
+            side="right"
+            align="start"
+            className="max-w-[350px] max-h-[300px] overflow-y-auto whitespace-pre-wrap"
+          >
+            <div className="space-y-1">
+              <p className="text-[10px] font-medium text-ink-muted uppercase tracking-wide">
+                {node.type === 'tool' ? (node.children.length > 0 ? `${node.childCount} tool calls` : node.label) : node.type}
+              </p>
+              <p className={cn(
+                'text-[11px] leading-relaxed',
+                node.type === 'tool' && 'font-mono text-[10px]',
+              )}>
+                {node.tooltip}
+              </p>
+            </div>
           </TooltipContent>
         )}
       </Tooltip>
       {expanded && hasChildren && (
-        <div>
+        <div className="animate-in fade-in-0 slide-in-from-top-1 duration-150">
           {node.children.map(child => (
             <TreeNodeItem
               key={child.id}
@@ -295,26 +341,34 @@ interface StepTreeSidebarProps {
 export function StepTreeSidebar({ events, activeEventId, onSelectEvent, onClose }: StepTreeSidebarProps) {
   const tree = useMemo(() => buildTree(events), [events])
 
+  // Count important steps for header badge
+  const importantCount = useMemo(() =>
+    tree.filter(n => n.type === 'thinking' || n.type === 'question').length,
+  [tree])
+
   return (
     <TooltipProvider>
       <div className="flex h-full w-[220px] shrink-0 flex-col border-r border-edge bg-surface-base">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-edge px-3 py-2">
-          <span className="text-xs font-semibold text-ink-secondary">Steps</span>
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] text-ink-disabled">{tree.length}</span>
-            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onClose} aria-label="Close step tree">
-              <PanelLeftClose className="h-3.5 w-3.5" />
-            </Button>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-ink-secondary">Steps</span>
+            <span className="rounded-full bg-surface-elevated px-1.5 py-0.5 text-[9px] font-medium text-ink-disabled">
+              {tree.length}
+            </span>
           </div>
+          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onClose} aria-label="Close step tree">
+            <PanelLeftClose className="h-3.5 w-3.5" />
+          </Button>
         </div>
 
         {/* Tree */}
         <ScrollArea className="flex-1">
-          <div className="py-1 px-1">
+          <div className="py-1">
             {tree.length === 0 ? (
-              <div className="flex items-center justify-center py-8">
-                <span className="text-[11px] text-ink-disabled">No steps yet</span>
+              <div className="flex flex-col items-center justify-center gap-2 py-12">
+                <Brain className="h-6 w-6 text-ink-disabled/50" />
+                <span className="text-[11px] text-ink-disabled">Waiting for steps...</span>
               </div>
             ) : (
               tree.map(node => (
@@ -328,6 +382,14 @@ export function StepTreeSidebar({ events, activeEventId, onSelectEvent, onClose 
             )}
           </div>
         </ScrollArea>
+
+        {/* Footer summary */}
+        {tree.length > 0 && (
+          <div className="flex items-center gap-3 border-t border-edge px-3 py-1.5 text-[10px] text-ink-disabled">
+            <span>{importantCount} thinking</span>
+            <span>{tree.filter(n => n.type === 'tool').length} tools</span>
+          </div>
+        )}
       </div>
     </TooltipProvider>
   )
