@@ -130,14 +130,18 @@ class SessionCleanupService {
     }
   }
 
-  /** Prune orphaned worktree entries from all known project repos */
+  /** Prune orphaned worktree entries from repos that have had worktree sessions */
   private pruneOrphanedWorktrees(): void {
-    const allProjects = db.select({ project_root: projects.project_root }).from(projects).all()
-    for (const project of allProjects) {
-      const gitService = new GitService(project.project_root)
-      gitService.worktreePrune(project.project_root).catch(() => {
-        // Ignore prune failures — repo may not exist or have worktrees
-      })
+    const reposWithWorktrees = db
+      .select({ project_root: projects.project_root })
+      .from(sessions)
+      .innerJoin(projects, eq(sessions.project_id, projects.id))
+      .where(sql`${sessions.worktree_path} IS NOT NULL`)
+      .groupBy(projects.project_root)
+      .all()
+    for (const repo of reposWithWorktrees) {
+      const gitService = new GitService(repo.project_root)
+      gitService.worktreePrune(repo.project_root).catch(() => {})
     }
   }
 }

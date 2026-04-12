@@ -88,7 +88,8 @@ export default function AgentsPage() {
   const selectedEvents = useMemo(() => {
     if (!selectedEventsData?.events) return []
     return selectedEventsData.events.map(parseSessionEvent)
-  }, [selectedEventsData])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stabilize: only recompute when event count changes
+  }, [selectedEventsData?.events?.length])
 
   // Persist step tree preference
   const toggleStepTree = useCallback(() => {

@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 // ─── Workflow Node Types ─────────────────────────────────────────────────────
 // v1: Strictly sequential execution. No parallel nodes, no conditionals,
 // no variable interpolation. Designed to evolve into a full DAG engine.
@@ -30,13 +32,30 @@ export interface WorkflowStepResult {
   error?: string
 }
 
-/** Parse workflow_nodes JSON from session record */
+// ─── Validation ─────────────────────────────────────────────────────────────
+
+const bashConfigSchema = z.object({
+  commands: z.array(z.string().max(2000)).min(1).max(10),
+})
+
+const promptConfigSchema = z.object({})
+
+const workflowNodeSchema = z.object({
+  id: z.string().min(1).max(100),
+  type: z.enum(['bash', 'prompt']),
+  config: z.union([bashConfigSchema, promptConfigSchema]),
+})
+
+const workflowNodesSchema = z.array(workflowNodeSchema).min(1).max(20)
+
+/** Parse and validate workflow_nodes JSON from session record */
 export function parseWorkflowNodes(json: string | null): WorkflowNode[] | null {
   if (!json) return null
   try {
-    const nodes = JSON.parse(json)
-    if (!Array.isArray(nodes) || nodes.length === 0) return null
-    return nodes as WorkflowNode[]
+    const raw = JSON.parse(json)
+    const parsed = workflowNodesSchema.safeParse(raw)
+    if (!parsed.success) return null
+    return parsed.data as WorkflowNode[]
   } catch {
     return null
   }

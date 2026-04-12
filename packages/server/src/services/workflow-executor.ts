@@ -13,6 +13,8 @@ export interface WorkflowCallbacks {
   onStepComplete: (result: WorkflowStepResult) => void
   /** Called when a bash step fails — should ask user and return true to continue, false to abort */
   onBashFailure: (nodeId: string, command: string, error: string, exitCode: number) => Promise<boolean>
+  /** Evaluate a bash command against the project's command policy. Returns 'allow', 'block', or 'ask'. */
+  checkCommandPolicy: (command: string) => 'allow' | 'block' | 'ask'
   /** Called to execute the prompt node — delegates to session runner's runAgent */
   executePrompt: () => Promise<void>
   /** Check if execution should be aborted */
@@ -38,7 +40,6 @@ export async function executeWorkflow(
     }
 
     callbacks.onStepStart(node.id, node.type)
-    const startedAt = Date.now()
 
     if (node.type === 'bash') {
       const result = await executeBashNode(node, cwd, env, callbacks)
@@ -70,6 +71,26 @@ async function executeBashNode(
   for (const command of config.commands) {
     if (callbacks.isAborted()) {
       return makeResult(node, startedAt, 'skipped')
+    }
+
+    // Evaluate command against project policy before execution
+    const policyResult = callbacks.checkCommandPolicy(command)
+    if (policyResult === 'block') {
+      const result = makeResult(node, startedAt, 'failed', 1)
+      result.error = `Command blocked by policy: ${command.slice(0, 100)}`
+      callbacks.onStepComplete(result)
+      return result
+    }
+    if (policyResult === 'ask') {
+      const shouldContinue = await callbacks.onBashFailure(
+        node.id, command, `Command requires approval: ${command}`, 0,
+      )
+      if (!shouldContinue) {
+        const result = makeResult(node, startedAt, 'failed', 1)
+        result.error = `Command rejected by user: ${command.slice(0, 100)}`
+        callbacks.onStepComplete(result)
+        return result
+      }
     }
 
     try {

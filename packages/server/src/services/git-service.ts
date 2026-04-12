@@ -123,7 +123,10 @@ export class GitService {
       ['log', '-1', '--format=%H|%s|%an|%at'],
       repoPath,
     )
-    const [hash, message, author, dateStr] = output.split('|')
+    const [hash, ...rest] = output.split('|')
+    const dateStr = rest.pop()!
+    const author = rest.pop()!
+    const message = rest.join('|') // Rejoin in case message contains '|'
     return {
       hash: hash.slice(0, 7),
       message,

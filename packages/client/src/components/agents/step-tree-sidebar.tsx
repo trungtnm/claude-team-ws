@@ -341,10 +341,9 @@ interface StepTreeSidebarProps {
 export function StepTreeSidebar({ events, activeEventId, onSelectEvent, onClose }: StepTreeSidebarProps) {
   const tree = useMemo(() => buildTree(events), [events])
 
-  // Count important steps for header badge
-  const importantCount = useMemo(() =>
-    tree.filter(n => n.type === 'thinking' || n.type === 'question').length,
-  [tree])
+  const thinkingCount = useMemo(() => tree.filter(n => n.type === 'thinking').length, [tree])
+  const toolCount = useMemo(() => tree.filter(n => n.type === 'tool').length, [tree])
+  const questionCount = useMemo(() => tree.filter(n => n.type === 'question').length, [tree])
 
   return (
     <TooltipProvider>
@@ -386,8 +385,9 @@ export function StepTreeSidebar({ events, activeEventId, onSelectEvent, onClose 
         {/* Footer summary */}
         {tree.length > 0 && (
           <div className="flex items-center gap-3 border-t border-edge px-3 py-1.5 text-[10px] text-ink-disabled">
-            <span>{importantCount} thinking</span>
-            <span>{tree.filter(n => n.type === 'tool').length} tools</span>
+            <span>{thinkingCount} thinking</span>
+            <span>{toolCount} tools</span>
+            {questionCount > 0 && <span>{questionCount} questions</span>}
           </div>
         )}
       </div>

@@ -442,10 +442,20 @@ class SessionRunner {
         })
       },
       onBashFailure: async (nodeId, command, error, exitCode) => {
-        // Use the existing AskUserQuestion mechanism
+        // Use the existing AskUserQuestion mechanism with a 10-minute timeout
         return new Promise<boolean>((resolve) => {
           const questionText = `Pre-command failed (exit ${exitCode}):\n\`${command}\`\n\n${error.slice(0, 500)}\n\nContinue anyway?`
+
+          const timeout = setTimeout(() => {
+            managed.pendingAnswer = null
+            resolve(false) // Auto-abort after timeout
+            this.pushEvent(managed, 'system', {
+              content: 'Workflow step question timed out after 10 minutes — auto-aborting.',
+            })
+          }, 10 * 60 * 1000)
+
           managed.pendingAnswer = (answer: string) => {
+            clearTimeout(timeout)
             managed.pendingAnswer = null
             resolve(answer.toLowerCase().includes('yes') || answer.toLowerCase().includes('continue'))
           }
@@ -472,6 +482,9 @@ class SessionRunner {
             context: `Step "${nodeId}" failed`,
           })
         })
+      },
+      checkCommandPolicy: (command: string) => {
+        return evaluateCommandPolicy(command, managed.commandPolicy)
       },
       executePrompt: async () => {
         await this.runAgent(managed, session.prompt, session.model, false, sessionEnv)
