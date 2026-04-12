@@ -1,7 +1,8 @@
 import { eq, and, lt, sql } from 'drizzle-orm'
 import { db } from '../db/index.js'
-import { sessions, sessionEvents, notifications, activityLog } from '../db/schema.js'
+import { sessions, sessionEvents, projects, notifications, activityLog } from '../db/schema.js'
 import { emitToProject } from './socket-manager.js'
+import { GitService } from './git-service.js'
 
 // ─── Configuration ─────────────────────────────────────────────────────────
 
@@ -90,14 +91,54 @@ class SessionCleanupService {
         action: 'auto_completed',
       })
 
+      // Clean up worktree if present
+      if (session.worktree_path) {
+        this.cleanupWorktree(session).catch((err) => {
+          console.warn(`[SessionCleanup] worktree cleanup failed for ${session.id}: ${err}`)
+        })
+      }
+
       autoCompleted++
     }
+
+    // Prune orphaned worktrees across all project repos
+    this.pruneOrphanedWorktrees()
 
     if (autoCompleted > 0) {
       console.log(`[SessionCleanup] auto-completed ${autoCompleted} idle session(s)`)
     }
 
     return autoCompleted
+  }
+
+  /** Remove worktree and optionally push branch based on merge strategy */
+  private async cleanupWorktree(session: typeof sessions.$inferSelect): Promise<void> {
+    if (!session.worktree_path || !session.worktree_branch) return
+
+    const repoPath = session.target_dir || '.'
+    const gitService = new GitService(repoPath)
+    const project = db.select().from(projects).where(eq(projects.id, session.project_id)).get()
+    const strategy = project?.worktree_merge_strategy || 'leave'
+
+    try {
+      if (strategy === 'push' || strategy === 'pr') {
+        await gitService.pushBranch(session.worktree_branch, session.worktree_path)
+      }
+      await gitService.worktreeRemove(repoPath, session.worktree_path)
+    } catch (err) {
+      console.warn(`[SessionCleanup] worktree cleanup error: ${err}`)
+    }
+  }
+
+  /** Prune orphaned worktree entries from all known project repos */
+  private pruneOrphanedWorktrees(): void {
+    const allProjects = db.select({ project_root: projects.project_root }).from(projects).all()
+    for (const project of allProjects) {
+      const gitService = new GitService(project.project_root)
+      gitService.worktreePrune(project.project_root).catch(() => {
+        // Ignore prune failures — repo may not exist or have worktrees
+      })
+    }
   }
 }
 

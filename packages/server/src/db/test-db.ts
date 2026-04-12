@@ -24,6 +24,7 @@ export function createTestDb(): { db: BetterSQLite3Database<typeof schema>; sqli
       ask_question_mode TEXT NOT NULL DEFAULT 'hybrid',
       safety_mode TEXT NOT NULL DEFAULT 'a', command_policy TEXT,
       max_session_input_tokens INTEGER, max_session_output_tokens INTEGER, max_session_tool_calls INTEGER,
+      worktree_merge_strategy TEXT NOT NULL DEFAULT 'leave',
       picture_url TEXT,
       created_at INTEGER NOT NULL DEFAULT (unixepoch()), updated_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
@@ -65,6 +66,7 @@ export function createTestDb(): { db: BetterSQLite3Database<typeof schema>; sqli
       status TEXT NOT NULL DEFAULT 'queued',
       permission_mode TEXT NOT NULL DEFAULT 'default',
       prompt TEXT NOT NULL, target_dir TEXT,
+      worktree_path TEXT, worktree_branch TEXT, workflow_nodes TEXT,
       pid INTEGER, exit_code INTEGER, pr_url TEXT, pr_status TEXT,
       input_tokens_used INTEGER NOT NULL DEFAULT 0,
       output_tokens_used INTEGER NOT NULL DEFAULT 0,

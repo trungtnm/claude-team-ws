@@ -57,6 +57,13 @@
       "when": 1774702000000,
       "tag": "0007_add_capture_attachments",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1774900000000,
+      "tag": "0008_add_worktree_and_workflow",
+      "breakpoints": true
     }
   ]
 }

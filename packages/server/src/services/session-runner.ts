@@ -5,8 +5,11 @@ import { join } from 'path'
 import { tmpdir, homedir } from 'os'
 import { nanoid } from 'nanoid'
 import { db } from '../db/index.js'
-import { sessions, sessionEvents, projects, activityLog, users, notifications, sessionAuditLog } from '../db/schema.js'
+import { sessions, sessionEvents, projects, epics, repos, activityLog, users, notifications, sessionAuditLog } from '../db/schema.js'
 import { emitToProject, emitToSession, getIO } from './socket-manager.js'
+import { GitService } from './git-service.js'
+import { parseWorkflowNodes } from './workflow-types.js'
+import { executeWorkflow, type WorkflowCallbacks } from './workflow-executor.js'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -322,7 +325,7 @@ class SessionRunner {
     if (this.managed.has(session.id)) return
 
     const abortController = new AbortController()
-    const targetDir = session.target_dir || this.projectRoot
+    const targetDir = session.worktree_path || session.target_dir || this.projectRoot
     const managed: ManagedSession = {
       sessionId: session.id,
       projectId: session.project_id,
@@ -361,13 +364,169 @@ class SessionRunner {
     // Push initial system event
     this.pushEvent(managed, 'system', { content: 'Session started' })
 
-    // Fetch user's API key for session env
-    const sessionEnv = this.buildSessionEnv(session.user_id, session.project_id)
-
-    // Run agent asynchronously
-    this.runAgent(managed, session.prompt, session.model, false, sessionEnv).catch((err) => {
+    // Provision worktree then run agent
+    this.provisionAndRun(managed, session).catch((err) => {
       console.error(`[SessionRunner] unexpected error for session ${session.id}:`, err)
     })
+  }
+
+  /** Provision a git worktree (if applicable) then run the agent */
+  private async provisionAndRun(
+    managed: ManagedSession,
+    session: typeof sessions.$inferSelect,
+  ): Promise<void> {
+    // Try to create a worktree if session has a repo target and no worktree yet
+    if (!session.worktree_path) {
+      const repoPath = session.target_dir || this.projectRoot
+      try {
+        const worktreeInfo = await this.createWorktreeForSession(
+          session.id, session.project_id, session.epic_id, repoPath,
+        )
+        if (worktreeInfo) {
+          managed.targetDir = worktreeInfo.worktreePath
+          db.update(sessions)
+            .set({ worktree_path: worktreeInfo.worktreePath, worktree_branch: worktreeInfo.branchName })
+            .where(eq(sessions.id, session.id))
+            .run()
+          this.pushEvent(managed, 'system', {
+            content: `Worktree created on branch ${worktreeInfo.branchName}`,
+          })
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        console.warn(`[SessionRunner] worktree creation failed for ${session.id}, using target_dir: ${message}`)
+        this.pushEvent(managed, 'system', {
+          content: `Worktree creation skipped: ${message}`,
+        })
+      }
+    }
+
+    const sessionEnv = this.buildSessionEnv(session.user_id, session.project_id)
+
+    // Check for workflow nodes — if present, use workflow executor
+    const nodes = parseWorkflowNodes(session.workflow_nodes ?? null)
+    if (nodes && nodes.length > 0) {
+      await this.runWorkflow(managed, session, nodes, sessionEnv)
+    } else {
+      await this.runAgent(managed, session.prompt, session.model, false, sessionEnv)
+    }
+  }
+
+  /** Run a workflow (sequence of bash + prompt nodes) */
+  private async runWorkflow(
+    managed: ManagedSession,
+    session: typeof sessions.$inferSelect,
+    nodes: import('./workflow-types.js').WorkflowNode[],
+    sessionEnv?: Record<string, string | undefined>,
+  ): Promise<void> {
+    const callbacks: WorkflowCallbacks = {
+      onStepStart: (nodeId, type) => {
+        this.pushEvent(managed, 'system', {
+          content: `Workflow step "${nodeId}" (${type}) started`,
+          subtype: 'step_start',
+          stepId: nodeId,
+          stepType: type,
+        })
+      },
+      onStepComplete: (result) => {
+        this.pushEvent(managed, 'system', {
+          content: `Step "${result.nodeId}" ${result.status} (${result.durationMs}ms)`,
+          subtype: 'step_complete',
+          stepId: result.nodeId,
+          stepType: result.type,
+          stepStatus: result.status,
+          durationMs: result.durationMs,
+          exitCode: result.exitCode,
+          output: result.output?.slice(0, 2000),
+          error: result.error?.slice(0, 2000),
+        })
+      },
+      onBashFailure: async (nodeId, command, error, exitCode) => {
+        // Use the existing AskUserQuestion mechanism
+        return new Promise<boolean>((resolve) => {
+          const questionText = `Pre-command failed (exit ${exitCode}):\n\`${command}\`\n\n${error.slice(0, 500)}\n\nContinue anyway?`
+          managed.pendingAnswer = (answer: string) => {
+            managed.pendingAnswer = null
+            resolve(answer.toLowerCase().includes('yes') || answer.toLowerCase().includes('continue'))
+          }
+
+          db.update(sessions)
+            .set({ status: 'waiting_input' })
+            .where(eq(sessions.id, managed.sessionId))
+            .run()
+
+          this.pushEvent(managed, 'tool_use', {
+            tool: 'AskUserQuestion',
+            input: { question: questionText, options: ['Yes, continue', 'No, abort'] },
+            questionData: {
+              text: questionText,
+              options: ['Yes, continue', 'No, abort'],
+              context: `Workflow step "${nodeId}" bash command failed`,
+            },
+          })
+
+          emitToSession(managed.sessionId, 'session:question', {
+            sessionId: managed.sessionId,
+            text: questionText,
+            options: ['Yes, continue', 'No, abort'],
+            context: `Step "${nodeId}" failed`,
+          })
+        })
+      },
+      executePrompt: async () => {
+        await this.runAgent(managed, session.prompt, session.model, false, sessionEnv)
+      },
+      isAborted: () => managed.abortController.signal.aborted,
+    }
+
+    this.pushEvent(managed, 'system', {
+      content: `Workflow started with ${nodes.length} step(s)`,
+      subtype: 'workflow_start',
+      totalSteps: nodes.length,
+    })
+
+    const results = await executeWorkflow(nodes, managed.targetDir, sessionEnv, callbacks)
+
+    const failed = results.find(r => r.status === 'failed')
+    this.pushEvent(managed, 'system', {
+      content: failed
+        ? `Workflow failed at step "${failed.nodeId}"`
+        : `Workflow completed — ${results.length} step(s) executed`,
+      subtype: 'workflow_complete',
+      results: results.map(r => ({ nodeId: r.nodeId, status: r.status, durationMs: r.durationMs })),
+    })
+  }
+
+  /** Create a git worktree for a session. Returns null if the target is not a git repo. */
+  private async createWorktreeForSession(
+    sessionId: string,
+    projectId: string,
+    epicId: string | null,
+    repoPath: string,
+  ): Promise<{ worktreePath: string; branchName: string } | null> {
+    // Check if it's a git repo
+    const gitService = new GitService(repoPath)
+    try {
+      await gitService.lastCommit(repoPath)
+    } catch {
+      return null // Not a git repo, skip worktree
+    }
+
+    // Build branch name: agent/{epicSlug}/{sessionId}
+    let epicSlug = 'standalone'
+    if (epicId) {
+      const epic = db.select({ title: epics.title }).from(epics).where(eq(epics.id, epicId)).get()
+      if (epic?.title) {
+        epicSlug = epic.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)
+      }
+    }
+    const branchName = `agent/${epicSlug}/${sessionId}`
+
+    // Worktree directory sits next to the repo
+    const worktreePath = join(repoPath, '..', `.worktrees`, sessionId)
+
+    await gitService.worktreeAdd(repoPath, worktreePath, branchName)
+    return { worktreePath, branchName }
   }
 
   private async runAgent(
@@ -1280,7 +1439,39 @@ class SessionRunner {
       details: JSON.stringify({ session_id: sessionId, name: session.name }),
     }).run()
 
+    // Handle worktree cleanup + merge strategy asynchronously
+    if (session.worktree_path) {
+      this.handleWorktreeCompletion(session).catch((err) => {
+        console.error(`[SessionRunner] worktree completion failed for ${sessionId}:`, err)
+      })
+    }
+
     return true
+  }
+
+  /** Execute merge strategy and clean up worktree after session completion */
+  private async handleWorktreeCompletion(session: typeof sessions.$inferSelect): Promise<void> {
+    if (!session.worktree_path || !session.worktree_branch) return
+
+    const repoPath = session.target_dir || this.projectRoot
+    const gitService = new GitService(repoPath)
+    const project = db.select().from(projects).where(eq(projects.id, session.project_id)).get()
+    const strategy = project?.worktree_merge_strategy || 'leave'
+
+    try {
+      if (strategy === 'push') {
+        await gitService.pushBranch(session.worktree_branch, session.worktree_path)
+      } else if (strategy === 'pr') {
+        await gitService.pushBranch(session.worktree_branch, session.worktree_path)
+        // PR creation is handled by the agent or via gh CLI in post-commands
+      }
+
+      // Remove the worktree directory (branch is kept)
+      await gitService.worktreeRemove(repoPath, session.worktree_path)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.warn(`[SessionRunner] worktree cleanup failed for ${session.id}: ${message}`)
+    }
   }
 
   /** Update permission mode for a session (takes effect on next resume) */
@@ -1321,6 +1512,20 @@ class SessionRunner {
 
     // Clean up attachment files for this session
     this.cleanupAttachments(sessionId)
+
+    // Clean up worktree if present
+    if (session.worktree_path) {
+      const repoPath = session.target_dir || this.projectRoot
+      const gitService = new GitService(repoPath)
+      gitService.worktreeRemove(repoPath, session.worktree_path).catch((err) => {
+        console.warn(`[SessionRunner] worktree removal on delete failed: ${err}`)
+      })
+      if (session.worktree_branch) {
+        gitService.deleteBranch(session.worktree_branch, repoPath).catch((err) => {
+          console.warn(`[SessionRunner] branch deletion on delete failed: ${err}`)
+        })
+      }
+    }
 
     // Delete events first (FK constraint)
     db.delete(sessionEvents).where(eq(sessionEvents.session_id, sessionId)).run()

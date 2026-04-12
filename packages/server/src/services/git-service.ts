@@ -64,6 +64,60 @@ export class GitService {
     await this.exec(['checkout', '-b', branchName], repoPath)
   }
 
+  // ─── Worktree Operations ──────────────────────────────────────────────────
+
+  async worktreeAdd(repoPath: string, worktreePath: string, branchName: string): Promise<void> {
+    await this.exec(['worktree', 'add', worktreePath, '-b', branchName], repoPath)
+  }
+
+  async worktreeRemove(repoPath: string, worktreePath: string): Promise<void> {
+    try {
+      await this.exec(['worktree', 'remove', worktreePath, '--force'], repoPath)
+    } catch (err) {
+      // Worktree may already be removed or path may not exist
+      const message = err instanceof Error ? err.message : String(err)
+      if (!message.includes('is not a working tree')) {
+        throw err
+      }
+    }
+  }
+
+  async worktreeList(repoPath: string): Promise<Array<{ path: string; branch: string; head: string }>> {
+    const output = await this.exec(['worktree', 'list', '--porcelain'], repoPath)
+    const worktrees: Array<{ path: string; branch: string; head: string }> = []
+    let current: { path: string; branch: string; head: string } = { path: '', branch: '', head: '' }
+
+    for (const line of output.split('\n')) {
+      if (line.startsWith('worktree ')) {
+        current = { path: line.slice(9), branch: '', head: '' }
+      } else if (line.startsWith('HEAD ')) {
+        current.head = line.slice(5, 12)
+      } else if (line.startsWith('branch ')) {
+        current.branch = line.slice(7).replace('refs/heads/', '')
+      } else if (line === '') {
+        if (current.path) worktrees.push(current)
+        current = { path: '', branch: '', head: '' }
+      }
+    }
+    if (current.path) worktrees.push(current)
+
+    return worktrees
+  }
+
+  async worktreePrune(repoPath: string): Promise<void> {
+    await this.exec(['worktree', 'prune'], repoPath)
+  }
+
+  async deleteBranch(branchName: string, repoPath: string): Promise<void> {
+    await this.exec(['branch', '-D', branchName], repoPath)
+  }
+
+  async pushBranch(branchName: string, repoPath: string, remote = 'origin'): Promise<void> {
+    await this.exec(['push', '-u', remote, branchName], repoPath)
+  }
+
+  // ─── Commit History ─────────────────────────────────────────────────────────
+
   async lastCommit(repoPath: string): Promise<{ hash: string; message: string; author: string; date: number }> {
     const output = await this.exec(
       ['log', '-1', '--format=%H|%s|%an|%at'],

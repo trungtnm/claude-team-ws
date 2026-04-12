@@ -31,6 +31,9 @@ export const projects = sqliteTable('projects', {
   max_session_input_tokens: integer('max_session_input_tokens'),
   max_session_output_tokens: integer('max_session_output_tokens'),
   max_session_tool_calls: integer('max_session_tool_calls'),
+  worktree_merge_strategy: text('worktree_merge_strategy', {
+    enum: ['leave', 'push', 'pr'],
+  }).notNull().default('leave'),
   picture_url: text('picture_url'),
   created_at: integer('created_at').notNull().default(sql`(unixepoch())`),
   updated_at: integer('updated_at').notNull().default(sql`(unixepoch())`),
@@ -122,6 +125,9 @@ export const sessions = sqliteTable('sessions', {
   }).notNull().default('default'),
   prompt: text('prompt').notNull(),
   target_dir: text('target_dir'),
+  worktree_path: text('worktree_path'),
+  worktree_branch: text('worktree_branch'),
+  workflow_nodes: text('workflow_nodes'), // JSON: WorkflowNode[]
   pid: integer('pid'),
   exit_code: integer('exit_code'),
   pr_url: text('pr_url'),

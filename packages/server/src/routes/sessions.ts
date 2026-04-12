@@ -63,6 +63,8 @@ const createSessionSchema = z.object({
   model: z.enum(['sonnet', 'opus', 'haiku']).optional(),
   permission_mode: z.enum(['default', 'plan', 'acceptEdits', 'bypassPermissions']).optional(),
   target_dir: z.string().max(500).optional(),
+  pre_commands: z.array(z.string().max(2000)).max(10).optional(),
+  post_commands: z.array(z.string().max(2000)).max(10).optional(),
 })
 
 // POST / — create session (check concurrency limits)
@@ -76,7 +78,24 @@ router.post('/', (req, res) => {
 
     const projectId = param(req, 'projectId')
     const user = req.user!
-    let { epic_id, name, prompt, model, permission_mode, target_dir } = parsed.data
+    let { epic_id, name, prompt, model, permission_mode, target_dir, pre_commands, post_commands } = parsed.data
+
+    // Enforce one active worktree per epic
+    if (epic_id) {
+      const activeSession = db
+        .select({ id: sessions.id, status: sessions.status })
+        .from(sessions)
+        .where(and(
+          eq(sessions.epic_id, epic_id),
+          eq(sessions.project_id, projectId),
+        ))
+        .all()
+        .find(s => ['queued', 'running', 'waiting_input', 'idle'].includes(s.status))
+      if (activeSession) {
+        res.status(409).json({ error: 'An active session already exists for this epic. Complete or cancel it first.' })
+        return
+      }
+    }
 
     // Check concurrency limits
     const project = db.select().from(projects).where(eq(projects.id, projectId)).get()
@@ -116,6 +135,20 @@ router.post('/', (req, res) => {
     const now = Math.floor(Date.now() / 1000)
     const id = nanoid()
 
+    // Build workflow nodes from pre/post commands
+    let workflowNodes: string | null = null
+    if (pre_commands?.length || post_commands?.length) {
+      const nodes: Array<{ id: string; type: string; config: Record<string, unknown> }> = []
+      if (pre_commands?.length) {
+        nodes.push({ id: 'pre', type: 'bash', config: { commands: pre_commands } })
+      }
+      nodes.push({ id: 'prompt', type: 'prompt', config: {} })
+      if (post_commands?.length) {
+        nodes.push({ id: 'post', type: 'bash', config: { commands: post_commands } })
+      }
+      workflowNodes = JSON.stringify(nodes)
+    }
+
     db.insert(sessions).values({
       id,
       project_id: projectId,
@@ -126,6 +159,7 @@ router.post('/', (req, res) => {
       status: 'queued',
       permission_mode: permission_mode ?? 'default',
       target_dir: target_dir ?? null,
+      workflow_nodes: workflowNodes,
       prompt,
       created_at: now,
     }).run()
