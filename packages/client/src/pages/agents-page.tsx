@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  Bot, Plus, Search, Maximize2, X, PanelLeftOpen,
+  Bot, Plus, Search, Maximize2, X, PanelLeftOpen, PanelLeft,
   Loader2, CheckCircle,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +13,8 @@ import { SessionStatsBar } from '@/components/agents/session-stats-bar'
 import { SessionInput } from '@/components/agents/session-input'
 import { PermissionModeBar } from '@/components/agents/permission-mode-bar'
 import { NewSessionDialog } from '@/components/agents/new-session-dialog'
+import { StepTreeSidebar } from '@/components/agents/step-tree-sidebar'
+import { useSessionEventsQuery, parseSessionEvent } from '@/hooks/use-sessions'
 import { useSessionsQuery, useCancelSessionMutation, useInterruptSessionMutation, useCompleteSessionMutation, useDeleteSessionMutation, useBulkDeleteSessionsMutation, useSessionRoom, isActiveSession } from '@/hooks/use-sessions'
 import { cn } from '@/lib/utils'
 import type { AgentSession } from '@/types'
@@ -52,6 +54,11 @@ export default function AgentsPage() {
   const [activeTab, setActiveTab] = useState<FilterTab>('active')
   const [newSessionOpen, setNewSessionOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [stepTreeOpen, setStepTreeOpen] = useState(() => {
+    try { return localStorage.getItem('ctw:stepTree') !== 'closed' } catch { return true }
+  })
+  const [scrollTarget, setScrollTarget] = useState<{ eventId: number; seq: number } | null>(null)
+  const [activeEventId, setActiveEventId] = useState<number | null>(null)
 
   // Sync selected session with URL query param for deep linking
   const selectedSessionId = searchParams.get('session')
@@ -75,6 +82,22 @@ export default function AgentsPage() {
 
   // Join Socket.IO room for the selected session to get real-time events
   useSessionRoom(selectedSessionId ?? undefined)
+
+  // Fetch events for the selected session to power the step tree
+  const { data: selectedEventsData } = useSessionEventsQuery(selectedSessionId ?? '')
+  const selectedEvents = useMemo(() => {
+    if (!selectedEventsData?.events) return []
+    return selectedEventsData.events.map(parseSessionEvent)
+  }, [selectedEventsData])
+
+  // Persist step tree preference
+  const toggleStepTree = useCallback(() => {
+    setStepTreeOpen(prev => {
+      const next = !prev
+      try { localStorage.setItem('ctw:stepTree', next ? 'open' : 'closed') } catch {}
+      return next
+    })
+  }, [])
 
   const running = useMemo(() => allSessions.filter((s) => s.status === 'running'), [allSessions])
   const waiting = useMemo(() => allSessions.filter((s) => s.status === 'waiting_input'), [allSessions])
@@ -141,7 +164,7 @@ export default function AgentsPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col min-h-0">
+    <div className="flex h-[calc(100vh-3rem)] flex-col overflow-hidden">
       {/* Top bar */}
       <div className="flex items-center justify-between border-b border-edge px-4 py-3">
         <div className="flex items-center gap-3">
@@ -269,6 +292,17 @@ export default function AgentsPage() {
                     >
                       <PanelLeftOpen className="h-4 w-4" />
                     </Button>
+                    {!stepTreeOpen && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="hidden md:flex h-7 w-7 p-0"
+                        onClick={toggleStepTree}
+                        title="Show step tree"
+                      >
+                        <PanelLeft className="h-4 w-4" />
+                      </Button>
+                    )}
                     <span className="text-sm font-medium text-ink truncate max-w-sm">{selectedSession.name || selectedSession.prompt}</span>
                     <Badge variant="outline" className="text-[10px]">{selectedSession.model}</Badge>
                     <Badge variant={statusConfig[selectedSession.status]?.badge ?? 'default'}>
@@ -331,9 +365,30 @@ export default function AgentsPage() {
 
               </div>
 
-              {/* Stream view */}
-              <div className="flex-1 min-h-0">
-                <AgentStreamView sessionId={selectedSession.id} />
+              {/* Step tree + stream view */}
+              <div className="flex flex-1 min-h-0">
+                {/* Step tree sidebar */}
+                {stepTreeOpen && selectedEvents.length > 0 && (
+                  <div className="hidden md:flex h-full">
+                    <StepTreeSidebar
+                      events={selectedEvents}
+                      activeEventId={activeEventId}
+                      onSelectEvent={(id) => {
+                        setScrollTarget({ eventId: id, seq: Date.now() })
+                        setActiveEventId(id)
+                      }}
+                      onClose={toggleStepTree}
+                    />
+                  </div>
+                )}
+
+                {/* Stream view */}
+                <div className="flex-1 min-h-0">
+                  <AgentStreamView
+                    sessionId={selectedSession.id}
+                    scrollTarget={scrollTarget}
+                  />
+                </div>
               </div>
 
               {/* Permission mode bar + Stats bar + input */}

@@ -12,7 +12,15 @@ import { useProjectSettings, useUpdateProject } from '@/hooks/use-settings'
 import { queryKeys } from '@/lib/query-keys'
 import { useProject } from '@/providers/project-provider'
 import { healthApi, projectsApi } from '@/lib/resources'
-import type { AskQuestionMode } from '@/types'
+import type { AskQuestionMode, Project } from '@/types'
+
+type MergeStrategy = Project['worktreeMergeStrategy']
+
+const mergeStrategies = [
+  { value: 'leave' as const, label: 'Leave branch', description: 'Worktree branch is kept for manual PR creation' },
+  { value: 'push' as const, label: 'Auto-push', description: 'Branch is automatically pushed to remote on completion' },
+  { value: 'pr' as const, label: 'Auto-create PR', description: 'Branch is pushed and a PR is created via gh CLI' },
+]
 
 const askQuestionModes = [
   { value: 'pause', label: 'Pause', description: 'Agent stops and waits for human answer' },
@@ -52,6 +60,7 @@ export function ProjectTab() {
   const [description, setDescription] = useState('')
   const [maxAgents, setMaxAgents] = useState('3')
   const [askMode, setAskMode] = useState<AskQuestionMode>('hybrid')
+  const [mergeStrategy, setMergeStrategy] = useState<MergeStrategy>('leave')
   const [copied, setCopied] = useState(false)
   const [integrationStatuses, setIntegrationStatuses] = useState(defaultIntegrations)
   const [integrationsLoading, setIntegrationsLoading] = useState(false)
@@ -67,6 +76,7 @@ export function ProjectTab() {
       setDescription('') // Description not yet in DB — show empty for now
       setMaxAgents(String(project.maxConcurrentAgents))
       setAskMode(project.askQuestionMode)
+      setMergeStrategy(project.worktreeMergeStrategy ?? 'leave')
       setFormInitialized(true)
     }
   }, [project, formInitialized])
@@ -105,6 +115,7 @@ export function ProjectTab() {
         name: name.trim(),
         maxConcurrentAgents: parseInt(maxAgents, 10) || 3,
         askQuestionMode: askMode,
+        worktreeMergeStrategy: mergeStrategy,
       },
       {
         onSuccess: () => toast.success('Project settings saved'),
@@ -323,6 +334,39 @@ export function ProjectTab() {
                   </span>
                   <p className={cn('text-[11px] mt-0.5', askMode === mode.value ? 'text-accent/70' : 'text-ink-muted')}>
                     {mode.description}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-ink-secondary">Worktree merge strategy</label>
+          <p className="mb-2 text-[11px] text-ink-muted">What happens to the git worktree branch when an agent session completes.</p>
+          <div className="flex flex-col gap-2 max-w-sm">
+            {mergeStrategies.map((strategy) => (
+              <button
+                key={strategy.value}
+                type="button"
+                onClick={() => setMergeStrategy(strategy.value)}
+                className={cn(
+                  'flex items-start gap-3 rounded-[var(--radius-md)] border px-3 py-2.5 text-left transition-all cursor-pointer',
+                  mergeStrategy === strategy.value
+                    ? 'border-accent/40 bg-accent-muted'
+                    : 'border-edge hover:bg-surface-elevated',
+                )}
+              >
+                <div className={cn(
+                  'mt-0.5 h-3.5 w-3.5 shrink-0 rounded-full border-2 transition-colors',
+                  mergeStrategy === strategy.value ? 'border-accent bg-accent' : 'border-edge',
+                )} />
+                <div>
+                  <span className={cn('text-xs font-medium', mergeStrategy === strategy.value ? 'text-accent' : 'text-ink-secondary')}>
+                    {strategy.label}
+                  </span>
+                  <p className={cn('text-[11px] mt-0.5', mergeStrategy === strategy.value ? 'text-accent/70' : 'text-ink-muted')}>
+                    {strategy.description}
                   </p>
                 </div>
               </button>

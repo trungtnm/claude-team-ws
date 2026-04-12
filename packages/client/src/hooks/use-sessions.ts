@@ -297,6 +297,16 @@ export function parseSessionEvent(event: SessionEvent): ParsedStreamEvent {
     toolInput: data.toolInput as string | undefined,
     toolResult: data.toolResult as string | undefined,
     timestamp: event.createdAt,
+    subtype: data.subtype as string | undefined,
+    stepId: data.stepId as string | undefined,
+    stepType: data.stepType as string | undefined,
+    stepStatus: data.stepStatus as string | undefined,
+    durationMs: data.durationMs as number | undefined,
+    exitCode: data.exitCode as number | undefined,
+    output: data.output as string | undefined,
+    error: data.error as string | undefined,
+    totalSteps: data.totalSteps as number | undefined,
+    results: data.results as ParsedStreamEvent['results'],
     attachments: data.attachments as ParsedStreamEvent['attachments'],
     questionData: data.questionData as ParsedStreamEvent['questionData'],
     contextWindow: data.contextWindow as ParsedStreamEvent['contextWindow'],
@@ -311,6 +321,17 @@ export interface ParsedStreamEvent {
   toolInput?: string
   toolResult?: string
   timestamp: number
+  // Workflow step data
+  subtype?: string
+  stepId?: string
+  stepType?: string
+  stepStatus?: string
+  durationMs?: number
+  exitCode?: number
+  output?: string
+  error?: string
+  totalSteps?: number
+  results?: Array<{ nodeId: string; status: string; durationMs: number }>
   attachments?: Array<{ type: 'image' | 'file'; name: string; mimeType: string; data: string }>
   questionData?: {
     text: string

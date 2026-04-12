@@ -55,6 +55,7 @@ export interface Project {
   projectRoot: string
   maxConcurrentAgents: number
   askQuestionMode: AskQuestionMode
+  worktreeMergeStrategy: 'leave' | 'push' | 'pr'
   pictureUrl: string | null
   createdAt: number
   updatedAt: number
@@ -145,6 +146,9 @@ export interface AgentSession {
   status: SessionStatus
   permissionMode: PermissionMode
   targetDir: string | null
+  worktreePath: string | null
+  worktreeBranch: string | null
+  workflowNodes: string | null
   prompt: string
   pid: number | null
   exitCode: number | null

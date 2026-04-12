@@ -27,7 +27,7 @@ export function useUpdateProject() {
   const { projectId } = useProject()
 
   return useMutation({
-    mutationFn: (data: Partial<Pick<Project, 'name' | 'maxConcurrentAgents' | 'askQuestionMode'>>) =>
+    mutationFn: (data: Partial<Pick<Project, 'name' | 'maxConcurrentAgents' | 'askQuestionMode' | 'worktreeMergeStrategy'>>) =>
       projectsApi.update(projectId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(projectId) })

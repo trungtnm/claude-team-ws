@@ -7,19 +7,22 @@ import { cn } from '@/lib/utils'
 
 interface AgentStreamViewProps {
   sessionId: string
+  scrollTarget?: { eventId: number; seq: number } | null
 }
 
 /** How close to the bottom (in px) counts as "at the bottom" */
 const SCROLL_THRESHOLD = 80
 
-export function AgentStreamView({ sessionId }: AgentStreamViewProps) {
+export function AgentStreamView({ sessionId, scrollTarget }: AgentStreamViewProps) {
   const { data: session } = useSessionQuery(sessionId)
   const { data: eventsData } = useSessionEventsQuery(sessionId)
   const answerMutation = useAnswerSessionMutation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const eventRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [hasNewBelow, setHasNewBelow] = useState(false)
+  const [highlightedEventId, setHighlightedEventId] = useState<number | null>(null)
   const prevEventCount = useRef(0)
 
   const events = useMemo(() => {
@@ -64,13 +67,28 @@ export function AgentStreamView({ sessionId }: AgentStreamViewProps) {
   // ── Scroll to bottom on initial load or session change ─────────────────
 
   useEffect(() => {
+    eventRefs.current.clear()
     setIsAtBottom(true)
     setHasNewBelow(false)
+    setHighlightedEventId(null)
     prevEventCount.current = 0
     requestAnimationFrame(() => {
       bottomRef.current?.scrollIntoView()
     })
   }, [sessionId])
+
+  // ── Scroll to specific event when requested by step tree ────────────────
+
+  useEffect(() => {
+    if (!scrollTarget) return
+    const el = eventRefs.current.get(scrollTarget.eventId)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setHighlightedEventId(scrollTarget.eventId)
+      const timer = setTimeout(() => setHighlightedEventId(null), 1500)
+      return () => clearTimeout(timer)
+    }
+  }, [scrollTarget])
 
   // ── Force scroll when question appears (waiting_input) ──────────────────
 
@@ -136,14 +154,26 @@ export function AgentStreamView({ sessionId }: AgentStreamViewProps) {
           {events.map((event) => {
             const isAskEvent = event.type === 'tool_use' && event.toolName === 'AskUserQuestion'
             const isLastAsk = isAskEvent && event.id === lastAskEventId
+            const isHighlighted = event.id === highlightedEventId
             return (
-              <StreamEvent
+              <div
                 key={event.id}
-                event={event}
-                question={isAskEvent ? event.questionData : undefined}
-                isWaitingInput={isLastAsk && !!isWaitingInput}
-                onAnswer={isLastAsk && isWaitingInput ? handleAnswer : undefined}
-              />
+                ref={(el) => {
+                  if (el) eventRefs.current.set(event.id, el)
+                  else eventRefs.current.delete(event.id)
+                }}
+                className={cn(
+                  'transition-all duration-500',
+                  isHighlighted && 'ring-2 ring-accent/40 rounded-[var(--radius-md)]',
+                )}
+              >
+                <StreamEvent
+                  event={event}
+                  question={isAskEvent ? event.questionData : undefined}
+                  isWaitingInput={isLastAsk && !!isWaitingInput}
+                  onAnswer={isLastAsk && isWaitingInput ? handleAnswer : undefined}
+                />
+              </div>
             )
           })}
 

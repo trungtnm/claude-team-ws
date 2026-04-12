@@ -11,6 +11,10 @@ import {
   ChevronRight,
   DollarSign,
   Send,
+  Play,
+  CheckCircle,
+  XCircle,
+  SkipForward,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ParsedStreamEvent } from '@/hooks/use-sessions'
@@ -126,6 +130,48 @@ export function StreamEvent({ event, question, isWaitingInput, onAnswer }: Strea
     if (/session idle/i.test(event.content)) {
       return null
     }
+    // Workflow step events
+    if (event.subtype === 'step_start') {
+      return (
+        <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-blue-500/20 bg-blue-500/5 px-3 py-2">
+          <Play className="h-3.5 w-3.5 shrink-0 text-blue-400" />
+          <span className="text-xs font-medium text-blue-400">Step "{event.stepId}"</span>
+          <span className="rounded bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-mono text-blue-400">{event.stepType}</span>
+        </div>
+      )
+    }
+    if (event.subtype === 'step_complete') {
+      const isSuccess = event.stepStatus === 'success'
+      const isFailed = event.stepStatus === 'failed'
+      const StatusIcon = isSuccess ? CheckCircle : isFailed ? XCircle : SkipForward
+      const colorClass = isSuccess ? 'text-green-400 border-green-500/20 bg-green-500/5' : isFailed ? 'text-red-400 border-red-500/20 bg-red-500/5' : 'text-ink-muted border-edge bg-surface-elevated'
+      return (
+        <div className={cn('flex items-center gap-2 rounded-[var(--radius-md)] border px-3 py-2', colorClass)}>
+          <StatusIcon className="h-3.5 w-3.5 shrink-0" />
+          <span className="text-xs font-medium">Step "{event.stepId}" {event.stepStatus}</span>
+          {event.durationMs != null && (
+            <span className="text-[10px] opacity-70">{event.durationMs < 1000 ? `${event.durationMs}ms` : `${(event.durationMs / 1000).toFixed(1)}s`}</span>
+          )}
+          {event.exitCode != null && event.exitCode !== 0 && (
+            <span className="text-[10px] opacity-70">exit {event.exitCode}</span>
+          )}
+        </div>
+      )
+    }
+    if (event.subtype === 'workflow_start' || event.subtype === 'workflow_complete') {
+      const isComplete = event.subtype === 'workflow_complete'
+      const hasFailed = event.results?.some(r => r.status === 'failed')
+      return (
+        <div className={cn(
+          'flex items-center gap-2 rounded-[var(--radius-md)] border px-3 py-2',
+          isComplete && hasFailed ? 'border-red-500/20 bg-red-500/5' : 'border-accent/20 bg-accent-muted',
+        )}>
+          {isComplete ? (hasFailed ? <XCircle className="h-3.5 w-3.5 shrink-0 text-red-400" /> : <CheckCircle className="h-3.5 w-3.5 shrink-0 text-accent" />) : <Play className="h-3.5 w-3.5 shrink-0 text-accent" />}
+          <span className={cn('text-xs font-medium', isComplete && hasFailed ? 'text-red-400' : 'text-accent')}>{event.content}</span>
+        </div>
+      )
+    }
+
     // Show token limit / session stopped events as warnings
     const isStopEvent = /token.?limit|stopped|terminated|exceeded|context.?limit/i.test(event.content)
     if (isStopEvent) {
